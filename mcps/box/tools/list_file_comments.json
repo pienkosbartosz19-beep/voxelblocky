@@ -1,0 +1,42 @@
+{
+  "name": "list_file_comments",
+  "description": "Lists all comments on a specific file. Returns a paginated list of comments with configurable fields. Default fields (id, type, message, created_by, created_at) are always returned, but you can specify additional fields as needed.\n\nSupported fields include: id, type, message, created_at, created_by, modified_at, tagged_message, and any other comment-related fields supported by the Box API. Use pagination parameters (limit/offset) to handle files with many comments efficiently.\n\n<examples>\nBasic file comments listing:\n<input>\n{\n  \"file_id\": \"123456789\",\n  \"limit\": 50\n}\n</input>\n\nList with specific fields:\n<input>\n{\n  \"file_id\": \"987654321\",\n  \"fields\": [\"id\", \"message\", \"created_at\", \"created_by\", \"modified_at\"],\n  \"limit\": 100\n}\n</input>\n\nPaginated comments listing:\n<input>\n{\n  \"file_id\": \"555666777\",\n  \"fields\": [\"id\", \"type\", \"message\", \"tagged_message\", \"created_by\"],\n  \"limit\": 25,\n  \"offset\": 50\n}\n</input>\n</examples>",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "file_id": {
+        "type": "string",
+        "pattern": "^\\d+$"
+      },
+      "fields": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": [
+          "id",
+          "type",
+          "message",
+          "created_by",
+          "created_at"
+        ]
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 1000,
+        "default": 100
+      },
+      "offset": {
+        "type": "integer",
+        "minimum": 0,
+        "default": 0
+      }
+    },
+    "required": [
+      "file_id"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

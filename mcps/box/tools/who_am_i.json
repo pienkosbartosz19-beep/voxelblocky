@@ -1,0 +1,9 @@
+{
+  "name": "who_am_i",
+  "description": "Returns detailed information about the currently authenticated Box user. This tool provides comprehensive user profile data including basic identification, contact information, role details, and account settings. No input parameters are required as it retrieves information for the authenticated user making the request.\n\nThis tool is essential for understanding the current user context, verifying authentication status, and obtaining user-specific information for personalization or access control purposes. It's particularly useful when building user-aware applications or when you need to identify the current user's permissions and organizational role.\n\nThe response includes core user attributes such as ID, name, email, login, role, job title, and additional account details like space usage, language preferences, and timezone settings.\n\n<examples>\nGet current user information:\n<input>\n{}\n</input>\n</examples>",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {}
+  }
+}

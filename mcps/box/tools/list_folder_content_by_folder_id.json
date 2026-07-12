@@ -1,0 +1,36 @@
+{
+  "name": "list_folder_content_by_folder_id",
+  "description": "Lists files, folders, and web links contained in a folder. Returns a paginated list of items with at least fields. Fields (id, type, name, etag) are always returned. Use folder_id \"0\" for the root folder.\n\nSupported fields include: id, type, name, etag, sequence_id, sha1, content_created_at, content_modified_at, created_at, created_by, modified_at, modified_by, owned_by, parent, path_collection, size, trashed_at, item_status, description, shared_link, classification, comment_count, disposition_at, expires_at, extension, has_collaborations, is_accessible_via_shared_link, is_associated_with_app_item, is_externally_owned, is_package, lock, metadata, permissions, representations, shared_link_permission_options, tags, uploader_display_name, version_number, watermark_info, file_version.\n\n<examples>\nBasic folder listing:\n<input>\n{\n  \"folder_id\": \"0\",\n  \"limit\": 50\n}\n</input>\n\nList with specific fields:\n<input>\n{\n  \"folder_id\": \"123456789\",\n  \"fields\": [\"id\", \"name\", \"type\", \"size\", \"modified_at\", \"created_by\"],\n  \"limit\": 100\n}\n</input>\n\nPaginated listing:\n<input>\n{\n  \"folder_id\": \"987654321\", \n  \"fields\": [\"id\", \"name\", \"type\", \"path_collection\"],\n  \"limit\": 30,\n  \"offset\": 60\n}\n</input>\n</examples>",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "folder_id": {
+        "type": "string",
+        "pattern": "^\\d+$"
+      },
+      "fields": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": []
+      },
+      "offset": {
+        "type": "integer",
+        "minimum": 0,
+        "default": 0
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 1000,
+        "default": 30
+      }
+    },
+    "required": [
+      "folder_id"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

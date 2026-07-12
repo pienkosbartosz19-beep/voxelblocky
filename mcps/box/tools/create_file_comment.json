@@ -1,0 +1,26 @@
+{
+  "name": "create_file_comment",
+  "description": "Creates a new comment on a specific file. This tool allows you to add comments to files for collaboration, feedback, or documentation purposes. Comments are visible to all users with access to the file and can be used for team communication and file annotation.\n\nThe message can include special characters, line breaks, and Unicode characters. The tool returns complete comment information including metadata about the comment creation, author, and timestamps.\n\n<examples>\nBasic file comment:\n<input>\n{\n  \"file_id\": \"123456789\",\n  \"message\": \"This document looks good overall. Please review the financial projections in section 3.\"\n}\n</input>\n\nMulti-line structured comment:\n<input>\n{\n  \"file_id\": \"777888999\",\n  \"message\": \"Review Summary:\\n\\nContent: Excellent\\nStructure: Well organized\\nFormatting: Minor issues\\nCitations: Missing sources\\n\\nOverall: Good work, please address the citations before final submission.\"\n}\n</input>\n</examples>",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "file_id": {
+        "type": "string",
+        "pattern": "^\\d+$",
+        "description": "The ID of the file to add a comment to"
+      },
+      "message": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1000,
+        "description": "The comment message to add to the file"
+      }
+    },
+    "required": [
+      "file_id",
+      "message"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

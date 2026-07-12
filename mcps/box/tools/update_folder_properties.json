@@ -1,0 +1,55 @@
+{
+  "name": "update_folder_properties",
+  "description": "Updates folder metadata: name, description, tags, and collections.\n\n**Updatable fields:**\n- `name` - Folder name (max 255 chars, no / \\ . .. or leading/trailing spaces)\n- `description` - Folder description (max 256 chars)\n- `tags` - Tags array (max 100)\n- `collections` - Collections array with format [{\"id\": \"collection_id\"}]\n\n<examples>\nRename folder:\n<input>{\"folder_id\": \"123456789\", \"name\": \"Q1 2024 Reports\"}</input>\n\nUpdate description and tags:\n<input>\n{\n  \"folder_id\": \"987654321\",\n  \"description\": \"Q1 2024 financial reports\",\n  \"tags\": [\"finance\", \"2024\"]\n}\n</input>\n\nMultiple updates:\n<input>\n{\n  \"folder_id\": \"444555666\",\n  \"name\": \"Project Folder\",\n  \"tags\": [\"project\"],\n  \"collections\": [{\"id\": \"98765\"}]\n}\n</input>\n</examples>",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "folder_id": {
+        "type": "string",
+        "maxLength": 255,
+        "pattern": "^\\d+$",
+        "description": "The unique identifier of the folder to update"
+      },
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 255,
+        "description": "New name for the folder"
+      },
+      "description": {
+        "type": "string",
+        "maxLength": 256,
+        "description": "New description for the folder"
+      },
+      "tags": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 100,
+        "description": "Array of tags to apply to the folder"
+      },
+      "collections": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "additionalProperties": false
+        },
+        "description": "Array of collection objects with IDs to add the folder to"
+      }
+    },
+    "required": [
+      "folder_id"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

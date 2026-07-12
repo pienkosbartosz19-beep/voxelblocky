@@ -1,0 +1,26 @@
+{
+  "name": "get_file_details",
+  "description": "Gets comprehensive file information from Box. Returns essential fields by default (id, name, extension, createdBy, modifiedBy, createdAt, modifiedAt). Use 'fields' parameter to request additional properties.\n\n**Common useful fields:** size, description, tags, metadata, permissions, shared_link, parent, path_collection, file_version, sha1, lock, classification, comment_count, has_collaborations, representations, watermark_info, uploader_display_name, content_created_at, content_modified_at, item_status, expires_at, trashed_at.\n\n<examples>\nBasic file info:\n<input>{\"file_id\": \"123456789\"}</input>\n\nFile with metadata and permissions:\n<input>\n{\n  \"file_id\": \"987654321\",\n  \"fields\": [\"id\", \"name\", \"size\", \"permissions\", \"tags\", \"metadata\", \"shared_link\"]\n}\n</input>\n\nDetailed file analysis:\n<input>\n{\n  \"file_id\": \"555666777\",\n  \"fields\": [\"id\", \"name\", \"description\", \"file_version\", \"sha1\", \"path_collection\", \"classification\", \"comment_count\", \"has_collaborations\"]\n}\n</input>\n</examples>",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "file_id": {
+        "type": "string",
+        "pattern": "^\\d+$",
+        "description": "The unique identifier of the file"
+      },
+      "fields": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Specific fields to retrieve. If not specified, returns essential fields. Use to request additional metadata, permissions, etc."
+      }
+    },
+    "required": [
+      "file_id"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

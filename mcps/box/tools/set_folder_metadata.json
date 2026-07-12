@@ -1,0 +1,40 @@
+{
+  "name": "set_folder_metadata",
+  "description": "Creates or updates a metadata template instance on a folder (POST when the template is not yet applied, PUT JSON Patch when it is). Use list_metadata_templates and get_metadata_template_schema first for scope, template_key, and field keys. Same tool handles both first-time application and updates. Does not apply to the root folder (ID \"0\").",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "folder_id": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Box folder ID for the folder to attach or update metadata on. Root folder \"0\" is not supported."
+      },
+      "scope": {
+        "type": "string",
+        "enum": [
+          "enterprise",
+          "global"
+        ],
+        "description": "Metadata template scope: use list_metadata_templates to discover (enterprise or global)."
+      },
+      "template_key": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Template key from list_metadata_templates (e.g. templateKey)."
+      },
+      "metadata_fields": {
+        "type": "object",
+        "additionalProperties": {},
+        "description": "Field keys and values for this template. Use get_metadata_template_schema for valid field keys. Values must match the template (strings, numbers, or string arrays as required)."
+      }
+    },
+    "required": [
+      "folder_id",
+      "scope",
+      "template_key",
+      "metadata_fields"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

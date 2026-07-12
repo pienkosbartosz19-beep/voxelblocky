@@ -1,0 +1,27 @@
+{
+  "name": "upload_file",
+  "description": "Uploads a new file to Box. This tool creates a new file in Box using the provided text content. The file name including the extension must be provided and the extension must match the file content. Markdown uploads (e.g. .md) are regular text files like any other supported extension; use a .boxnote file name only when file_content should become a native Box Note via the notes conversion API. A parent folder ID can optionally be provided to determine where the new file should be created. The metadata details of the newly uploaded file are returned in response. If a file already exists with the same name, the tool will return an error.\n\n**Key Features:**\n- File creation with text content\n- Supported file extensions: txt, md, boxnote, html, svg, xml, csv, json, js, ts, py, sh\n- If the file extension is invalid, a .txt file will be created\n\n**Important:** This tool can only accept text content, to upload binary files, use the `get_upload_url` tool instead.\n\n<examples>\nUpload a file to Box:\n{\n  \"file_name\": \"example.md\",\n  \"file_content\": \"#This is my example markdown file\",\n  \"parent_folder_id\": \"0\",\n}\n<output>\n{\n  \"content\": [\n    {\n      \"type\": \"text\",\n      \"text\": \"{\"file_link\": \"https://example.app.box.com/file/123456789\", \"file_id\": \"123456789\", \"file_name\": \"example.md\", \"size\": 100, \"created_at\": \"2025-01-01T00:00:00Z\"}\"\n    }\n  ]\n}\n</output>\n</examples>",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "file_name": {
+        "type": "string",
+        "minLength": 1
+      },
+      "file_content": {
+        "type": "string",
+        "minLength": 1
+      },
+      "parent_folder_id": {
+        "type": "string",
+        "default": "0"
+      }
+    },
+    "required": [
+      "file_name",
+      "file_content"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

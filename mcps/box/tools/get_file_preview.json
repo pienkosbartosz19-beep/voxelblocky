@@ -1,0 +1,18 @@
+{
+  "name": "get_file_preview",
+  "description": "Displays an interactive preview widget for a Box file directly in chat. Supports: ai, bmp, cr2, crw, csv, dng, doc, docx, dwg, eml, eps, gdoc, gif, gsheet, gslide, gslides, heic, htm, html, idml, indd, indt, inx, jpeg, jpg, key, nef, numbers, odp, ods, odt, pages, pdf, png, ppt, pptx, ps, psd, raf, raw, rtf, svg, svs, tga, tif, tiff, tsv, webp, wpd, xhtml, xls, xlsm, xlsx. PDF uses direct download; other types use the appropriate representation (e.g. PDF for documents, JPG/PNG for images). Use when user wants to view file contents without downloading. For file metadata, use get_file_info instead. If the preview payload would exceed 3MB (full file for PDFs; generated representation for other types), do not use this. Do not attempt to generate an interactive artifact.\n\nWhen a preview is open, the widget sends file preview context (fileId, fileName, currentPage) into the conversation. If the user asks about \"this graph\", \"explain this\", \"what's on this page\", or similar, look for that context and call get_preview_page(fileId, currentPage) to fetch the page image—do not ask the user which page they are on.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "fileId": {
+        "type": "string",
+        "description": "The ID of the file to preview"
+      }
+    },
+    "required": [
+      "fileId"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

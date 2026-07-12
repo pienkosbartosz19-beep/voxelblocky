@@ -1,0 +1,25 @@
+{
+  "name": "copy_folder",
+  "description": "Copies an existing folder to a destination parent folder in Box (see Box API Copy folder). The source folder is not modified. Provide `parent_folder_id` as the folder that will contain the new copy; use `\"0\"` for the user's root folder. The root folder (`folder_id` `\"0\"`) cannot be copied. Optionally set `name` for the new copy; otherwise the original folder name is used.\n\n**Key features:**\n- Destination folder external-access guard (same as other write tools)\n- Optional new name for the copied folder\n\n<examples>\nCopy a folder into another folder:\n{\n  \"folder_id\": \"123456789\",\n  \"parent_folder_id\": \"987654321\"\n}\n\nCopy a folder to the user's root with a new name:\n{\n  \"folder_id\": \"123456789\",\n  \"parent_folder_id\": \"0\",\n  \"name\": \"Project-backup\"\n}\n</examples>",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "folder_id": {
+        "type": "string",
+        "minLength": 1
+      },
+      "parent_folder_id": {
+        "type": "string",
+        "default": "0"
+      },
+      "name": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "folder_id"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

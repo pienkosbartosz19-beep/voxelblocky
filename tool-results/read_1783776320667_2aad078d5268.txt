@@ -1,0 +1,922 @@
+     1→     1→'use client';
+     2→     2→
+     3→     3→import { useEffect, useRef, useState, useCallback } from 'react';
+     4→     4→import * as THREE from 'three';
+     5→     5→import { World } from '../game/world';
+     6→     6→import { ChunkManager } from '../game/chunkManager';
+     7→     7→import { BLOCKS, WORLD_CONFIG, QUESTS } from '../game/blocks';
+     8→     8→import type { BlockType, PlayerState, DayNightState, Quest } from '../game/types';
+     9→     9→
+    10→    10→export interface GameUIState {
+    11→    11→  health: number;
+    12→    12→  maxHealth: number;
+    13→    13→  hunger: number;
+    14→    14→  maxHunger: number;
+    15→    15→  stamina: number;
+    16→    16→  maxStamina: number;
+    17→    17→  hotbar: (BlockType | null)[];
+    18→    18→  inventory: { block: BlockType; count: number }[];
+    19→    19→  selectedSlot: number;
+    20→    20→  time: number; // 0..1
+    21→    21→  isDay: boolean;
+    22→    22→  fps: number;
+    23→    23→  position: { x: number; y: number; z: number };
+    24→    24→  lookingAt: BlockType | null;
+    25→    25→  breaking: boolean;
+    26→    26→  placeMode: boolean;
+    27→    27→  paused: boolean;
+    28→    28→  dead: boolean;
+    29→    29→  quests: Quest[];
+    30→    30→  chunkCount: number;
+    31→    31→  triangleCount: number;
+    32→    32→  biome: string;
+    33→    33→  message: string | null;
+    34→    34→  flying: boolean;
+    35→    35→}
+    36→    36→
+    37→    37→const INITIAL_STATE: GameUIState = {
+    38→    38→  health: 20,
+    39→    39→  maxHealth: 20,
+    40→    40→  hunger: 20,
+    41→    41→  maxHunger: 20,
+    42→    42→  stamina: 100,
+    43→    43→  maxStamina: 100,
+    44→    44→  hotbar: Array(7).fill(null),
+    45→    45→  inventory: [],
+    46→    46→  selectedSlot: 0,
+    47→    47→  time: 0.3,
+    48→    48→  isDay: true,
+    49→    49→  fps: 0,
+    50→    50→  position: { x: 0, y: 0, z: 0 },
+    51→    51→  lookingAt: null,
+    52→    52→  breaking: false,
+    53→    53→  placeMode: false,
+    54→    54→  paused: false,
+    55→    55→  dead: false,
+    56→    56→  quests: QUESTS.map(q => ({ ...q, objectives: q.objectives.map(o => ({ ...o })) })),
+    57→    57→  chunkCount: 0,
+    58→    58→  triangleCount: 0,
+    59→    59→  biome: 'plains',
+    60→    60→  message: null,
+    61→    61→  flying: false,
+    62→    62→};
+    63→    63→
+    64→    64→const HOTBAR_SLOTS = 7;
+    65→    65→const INVENTORY_SLOTS = 28;
+    66→    66→
+    67→    67→export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>, enabled: boolean = true) {
+    68→    68→  const [uiState, setUiState] = useState<GameUIState>(INITIAL_STATE);
+    69→    69→  const stateRef = useRef<GameUIState>({ ...INITIAL_STATE });
+    70→    70→  const gameRef = useRef<any>(null);
+    71→    71→
+    72→    72→  // Helper to update UI state
+    73→    73→  const syncUI = useCallback(() => {
+    74→    74→    setUiState({ ...stateRef.current });
+    75→    75→  }, []);
+    76→    76→
+    77→    77→  const setMessage = useCallback((msg: string | null, duration = 2500) => {
+    78→    78→    stateRef.current.message = msg;
+    79→    79→    syncUI();
+    80→    80→    if (msg) {
+    81→    81→      setTimeout(() => {
+    82→    82→        if (stateRef.current.message === msg) {
+    83→    83→          stateRef.current.message = null;
+    84→    84→          syncUI();
+    85→    85→        }
+    86→    86→      }, duration);
+    87→    87→    }
+    88→    88→  }, [syncUI]);
+    89→    89→
+    90→    90→  useEffect(() => {
+    91→    91→    if (!enabled) return;
+    92→    92→    if (!canvasRef.current) return;
+    93→    93→    if (gameRef.current) return;
+    94→    94→
+    95→    95→    const canvas = canvasRef.current;
+    96→    96→
+    97→    97→    // === Three.js setup ===
+    98→    98→    const scene = new THREE.Scene();
+    99→    99→    scene.background = new THREE.Color('#9fc8ec');
+   100→   100→    scene.fog = new THREE.Fog('#9fc8ec', 30, 80);
+   101→   101→
+   102→   102→    const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 500);
+   103→   103→    const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+   104→   104→    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+   105→   105→    renderer.setSize(window.innerWidth, window.innerHeight);
+   106→   106→    renderer.shadowMap.enabled = false; // disabled for performance; we use vertex shading instead
+   107→   107→    renderer.outputColorSpace = THREE.SRGBColorSpace;
+   108→   108→    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+   109→   109→    renderer.toneMappingExposure = 1.0;
+   110→   110→
+   111→   111→    // Lights
+   112→   112→    const ambient = new THREE.AmbientLight(0xffffff, 0.55);
+   113→   113→    scene.add(ambient);
+   114→   114→
+   115→   115→    const sun = new THREE.DirectionalLight(0xfff4d6, 1.0);
+   116→   116→    sun.position.set(50, 80, 30);
+   117→   117→    scene.add(sun);
+   118→   118→
+   119→   119→    // Hemisphere for ambient color
+   120→   120→    const hemi = new THREE.HemisphereLight(0xa0d8ff, 0x4a3a2a, 0.4);
+   121→   121→    scene.add(hemi);
+   122→   122→
+   123→   123→    // Moon (for night)
+   124→   124→    const moon = new THREE.DirectionalLight(0x9bb0d6, 0.0);
+   125→   125→    moon.position.set(-30, 60, -20);
+   126→   126→    scene.add(moon);
+   127→   127→
+   128→   128→    // === World ===
+   129→   129→    const world = new World(20260711);
+   130→   130→    const chunkManager = new ChunkManager(scene, world, WORLD_CONFIG.RENDER_DISTANCE);
+   131→   131→
+   132→   132→    // === Player ===
+   133→   133→    const spawn = world.findSpawn();
+   134→   134→
+   135→   135→    // Pre-generate the spawn chunk so the world is visible immediately
+   136→   136→    {
+   137→   137→      const spawnCx = Math.floor(spawn.x / 16);
+   138→   138→      const spawnCz = Math.floor(spawn.z / 16);
+   139→   139→      // Generate a 3x3 area of chunk data first (no meshes)
+   140→   140→      for (let dx = -1; dx <= 1; dx++) {
+   141→   141→        for (let dz = -1; dz <= 1; dz++) {
+   142→   142→          world.ensureChunkData(spawnCx + dx, spawnCz + dz);
+   143→   143→        }
+   144→   144→      }
+   145→   145→      // Now build the center chunk mesh
+   146→   146→      chunkManager.ensureChunk(spawnCx, spawnCz);
+   147→   147→    }
+   148→   148→
+   149→   149→    const player: PlayerState = {
+   150→   150→      position: { x: spawn.x, y: spawn.y, z: spawn.z },
+   151→   151→      velocity: { x: 0, y: 0, z: 0 },
+   152→   152→      yaw: 0.4,  // Slight rotation for nicer initial view
+   153→   153→      pitch: -0.15,  // Looking slightly upward to see more of the world
+   154→   154→      onGround: false,
+   155→   155→      flying: false,
+   156→   156→      health: 20,
+   157→   157→      maxHealth: 20,
+   158→   158→      hunger: 20,
+   159→   159→      maxHunger: 20,
+   160→   160→      stamina: 100,
+   161→   161→      maxStamina: 100,
+   162→   162→    };
+   163→   163→
+   164→   164→    // Hotbar + inventory
+   165→   165→    const hotbar: (BlockType | null)[] = Array(HOTBAR_SLOTS).fill(null);
+   166→   166→    const inventory: { block: BlockType; count: number }[] = Array(INVENTORY_SLOTS).fill(null).map(() => ({ block: 'air', count: 0 }));
+   167→   167→    let selectedSlot = 0;
+   168→   168→
+   169→   169→    // Give starter items so the player can build & explore right away
+   170→   170→    inventory[0] = { block: 'wood', count: 8 };
+   171→   171→    inventory[1] = { block: 'planks', count: 16 };
+   172→   172→    inventory[2] = { block: 'cobblestone', count: 16 };
+   173→   173→    inventory[3] = { block: 'torch', count: 8 };
+   174→   174→    inventory[4] = { block: 'coal', count: 4 };
+   175→   175→    inventory[5] = { block: 'glass', count: 4 };
+   176→   176→    hotbar[0] = 'wood';
+   177→   177→    hotbar[1] = 'planks';
+   178→   178→    hotbar[2] = 'cobblestone';
+   179→   179→    hotbar[3] = 'torch';
+   180→   180→
+   181→   181→    function addToInventory(block: BlockType, count = 1): number {
+   182→   182→      if (block === 'air') return 0;
+   183→   183→      // First, try hotbar slots
+   184→   184→      let remaining = count;
+   185→   185→      // Try to stack into existing inventory slots
+   186→   186→      for (let i = 0; i < inventory.length && remaining > 0; i++) {
+   187→   187→        if (inventory[i].block === block) {
+   188→   188→          inventory[i].count += remaining;
+   189→   189→          remaining = 0;
+   190→   190→        }
+   191→   191→      }
+   192→   192→      // Find empty inventory slot
+   193→   193→      for (let i = 0; i < inventory.length && remaining > 0; i++) {
+   194→   194→        if (inventory[i].count === 0 || inventory[i].block === 'air') {
+   195→   195→          inventory[i].block = block;
+   196→   196→          inventory[i].count = remaining;
+   197→   197→          remaining = 0;
+   198→   198→        }
+   199→   199→      }
+   200→   200→      updateQuestProgress(block, count);
+   201→   201→      return count - remaining;
+   202→   202→    }
+   203→   203→
+   204→   204→    function removeFromInventory(block: BlockType, count = 1): boolean {
+   205→   205→      // Count available
+   206→   206→      let available = 0;
+   207→   207→      for (const item of inventory) {
+   208→   208→        if (item.block === block) available += item.count;
+   209→   209→      }
+   210→   210→      if (available < count) return false;
+   211→   211→
+   212→   212→      let remaining = count;
+   213→   213→      for (let i = 0; i < inventory.length && remaining > 0; i++) {
+   214→   214→        if (inventory[i].block === block) {
+   215→   215→          const take = Math.min(inventory[i].count, remaining);
+   216→   216→          inventory[i].count -= take;
+   217→   217→          remaining -= take;
+   218→   218→          if (inventory[i].count === 0) inventory[i].block = 'air';
+   219→   219→        }
+   220→   220→      }
+   221→   221→      return true;
+   222→   222→    }
+   223→   223→
+   224→   224→    function getInventoryCount(block: BlockType): number {
+   225→   225→      let c = 0;
+   226→   226→      for (const item of inventory) {
+   227→   227→        if (item.block === block) c += item.count;
+   228→   228→      }
+   229→   229→      return c;
+   230→   230→    }
+   231→   231→
+   232→   232→    // Quest tracking
+   233→   233→    const questState: Quest[] = stateRef.current.quests.map(q => ({ ...q, objectives: q.objectives.map(o => ({ ...o })) }));
+   234→   234→
+   235→   235→    function updateQuestProgress(block: BlockType, count: number) {
+   236→   236→      for (const q of questState) {
+   237→   237→        for (const o of q.objectives) {
+   238→   238→          if (o.completed) continue;
+   239→   239→          if (o.target.block === block) {
+   240→   240→            o.progress = Math.min(o.target.count, o.progress + count);
+   241→   241→            if (o.progress >= o.target.count) {
+   242→   242→              o.completed = true;
+   243→   243→              setMessage(`Cel osiągnięty: ${o.description}`, 2200);
+   244→   244→            }
+   245→   245→          }
+   246→   246→        }
+   247→   247→        // Check if all objectives completed
+   248→   248→        const allDone = q.objectives.every(o => o.completed);
+   249→   249→        if (allDone) {
+   250→   250→          setMessage(`Quest ukończony: ${q.title}!`, 3500);
+   251→   251→        }
+   252→   252→      }
+   253→   253→      stateRef.current.quests = questState.map(q => ({ ...q, objectives: q.objectives.map(o => ({ ...o })) }));
+   254→   254→    }
+   255→   255→
+   256→   256→    // === Input handling ===
+   257→   257→    const keys: Record<string, boolean> = {};
+   258→   258→    let mouseLocked = false;
+   259→   259→    let leftMouseDown = false;
+   260→   260→    let rightMouseDown = false;
+   261→   261→    let breakingBlock: { x: number; y: number; z: number } | null = null;
+   262→   262→    let breakProgress = 0;
+   263→   263→    let lastBreakTime = 0;
+   264→   264→    let placeCooldown = 0;
+   265→   265→
+   266→   266→    function onKeyDown(e: KeyboardEvent) {
+   267→   267→      if (e.code === 'Escape') {
+   268→   268→        if (document.pointerLockElement === canvas) {
+   269→   269→          document.exitPointerLock();
+   270→   270→        }
+   271→   271→        stateRef.current.paused = !stateRef.current.paused;
+   272→   272→        syncUI();
+   273→   273→        return;
+   274→   274→      }
+   275→   275→      keys[e.code] = true;
+   276→   276→
+   277→   277→      // Hotbar selection
+   278→   278→      if (e.code.startsWith('Digit')) {
+   279→   279→        const n = parseInt(e.code.replace('Digit', ''));
+   280→   280→        if (n >= 1 && n <= HOTBAR_SLOTS) {
+   281→   281→          selectedSlot = n - 1;
+   282→   282→          stateRef.current.selectedSlot = selectedSlot;
+   283→   283→          syncUI();
+   284→   284→        }
+   285→   285→      }
+   286→   286→
+   287→   287→      // Toggle fly (Ctrl+F)
+   288→   288→      if (e.code === 'KeyF' && e.ctrlKey) {
+   289→   289→        player.flying = !player.flying;
+   290→   290→        player.velocity.y = 0;
+   291→   291→        stateRef.current.flying = player.flying;
+   292→   292→        setMessage(player.flying ? 'Tryb latania: WŁĄCZONY' : 'Tryb latania: wyłączony', 1500);
+   293→   293→        syncUI();
+   294→   294→      }
+   295→   295→    }
+   296→   296→
+   297→   297→    function onKeyUp(e: KeyboardEvent) {
+   298→   298→      keys[e.code] = false;
+   299→   299→    }
+   300→   300→
+   301→   301→    function onMouseDown(e: MouseEvent) {
+   302→   302→      // If pointer not locked, try to lock it on first click
+   303→   303→      if (!mouseLocked && document.pointerLockElement !== canvas) {
+   304→   304→        canvas.requestPointerLock();
+   305→   305→        // Still allow click to register for headless / no-pointer-lock environments
+   306→   306→      }
+   307→   307→      if (e.button === 0) {
+   308→   308→        leftMouseDown = true;
+   309→   309→        stateRef.current.breaking = true;
+   310→   310→        syncUI();
+   311→   311→      } else if (e.button === 2) {
+   312→   312→        rightMouseDown = true;
+   313→   313→        // Place block
+   314→   314→        tryPlaceBlock();
+   315→   315→        placeCooldown = 0.25;
+   316→   316→      }
+   317→   317→    }
+   318→   318→
+   319→   319→    function onMouseUp(e: MouseEvent) {
+   320→   320→      if (e.button === 0) {
+   321→   321→        leftMouseDown = false;
+   322→   322→        breakingBlock = null;
+   323→   323→        breakProgress = 0;
+   324→   324→        stateRef.current.breaking = false;
+   325→   325→        syncUI();
+   326→   326→      } else if (e.button === 2) {
+   327→   327→        rightMouseDown = false;
+   328→   328→      }
+   329→   329→    }
+   330→   330→
+   331→   331→    function onMouseMove(e: MouseEvent) {
+   332→   332→      // Use movementX/Y if available (works with or without pointer lock)
+   333→   333→      const mx = e.movementX || 0;
+   334→   334→      const my = e.movementY || 0;
+   335→   335→      if (mx === 0 && my === 0) return;
+   336→   336→      // Only rotate camera if pointer locked OR mouse is over canvas
+   337→   337→      if (!mouseLocked && document.pointerLockElement !== canvas) return;
+   338→   338→      const sensitivity = 0.0025;
+   339→   339→      player.yaw -= mx * sensitivity;
+   340→   340→      player.pitch -= my * sensitivity;
+   341→   341→      player.pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, player.pitch));
+   342→   342→    }
+   343→   343→
+   344→   344→    function onWheel(e: WheelEvent) {
+   345→   345→      if (e.deltaY > 0) {
+   346→   346→        selectedSlot = (selectedSlot + 1) % HOTBAR_SLOTS;
+   347→   347→      } else {
+   348→   348→        selectedSlot = (selectedSlot - 1 + HOTBAR_SLOTS) % HOTBAR_SLOTS;
+   349→   349→      }
+   350→   350→      stateRef.current.selectedSlot = selectedSlot;
+   351→   351→      syncUI();
+   352→   352→    }
+   353→   353→
+   354→   354→    function onPointerLockChange() {
+   355→   355→      mouseLocked = document.pointerLockElement === canvas;
+   356→   356→      // Don't auto-pause when pointer lock is lost - player can still play
+   357→   357→      // Pause only via Escape key
+   358→   358→      if (mouseLocked) {
+   359→   359→        // Resuming from pause when pointer lock re-acquired
+   360→   360→        stateRef.current.paused = false;
+   361→   361→        syncUI();
+   362→   362→      }
+   363→   363→    }
+   364→   364→
+   365→   365→    function onResize() {
+   366→   366→      camera.aspect = window.innerWidth / window.innerHeight;
+   367→   367→      camera.updateProjectionMatrix();
+   368→   368→      renderer.setSize(window.innerWidth, window.innerHeight);
+   369→   369→    }
+   370→   370→
+   371→   371→    document.addEventListener('keydown', onKeyDown);
+   372→   372→    document.addEventListener('keyup', onKeyUp);
+   373→   373→    document.addEventListener('mousedown', onMouseDown);
+   374→   374→    document.addEventListener('mouseup', onMouseUp);
+   375→   375→    document.addEventListener('mousemove', onMouseMove);
+   376→   376→    document.addEventListener('wheel', onWheel, { passive: true });
+   377→   377→    document.addEventListener('pointerlockchange', onPointerLockChange);
+   378→   378→    window.addEventListener('resize', onResize);
+   379→   379→    canvas.addEventListener('contextmenu', e => e.preventDefault());
+   380→   380→
+   381→   381→    // === Block placement / breaking ===
+   382→   382→    function getCameraDir(): THREE.Vector3 {
+   383→   383→      const dir = new THREE.Vector3(0, 0, -1);
+   384→   384→      const e = new THREE.Euler(player.pitch, player.yaw, 0, 'YXZ');
+   385→   385→      dir.applyEuler(e);
+   386→   386→      return dir;
+   387→   387→    }
+   388→   388→
+   389→   389→    function getLookingAt() {
+   390→   390→      const origin = new THREE.Vector3(player.position.x, player.position.y + 1.6, player.position.z);
+   391→   391→      const dir = getCameraDir();
+   392→   392→      return world.raycast(
+   393→   393→        { x: origin.x, y: origin.y, z: origin.z },
+   394→   394→        { x: dir.x, y: dir.y, z: dir.z },
+   395→   395→        WORLD_CONFIG.REACH,
+   396→   396→      );
+   397→   397→    }
+   398→   398→
+   399→   399→    function tryBreakBlock() {
+   400→   400→      const hit = getLookingAt();
+   401→   401→      if (!hit.hit) {
+   402→   402→        breakingBlock = null;
+   403→   403→        breakProgress = 0;
+   404→   404→        return;
+   405→   405→      }
+   406→   406→
+   407→   407→      const def = BLOCKS[hit.blockType];
+   408→   408→      if (!def.breakable) {
+   409→   409→        setMessage('Nie można zniszczyć tego bloku!', 1500);
+   410→   410→        breakingBlock = null;
+   411→   411→        return;
+   412→   412→      }
+   413→   413→
+   414→   414→      // If new block, reset progress
+   415→   415→      if (!breakingBlock || breakingBlock.x !== hit.block.x || breakingBlock.y !== hit.block.y || breakingBlock.z !== hit.block.z) {
+   416→   416→        breakingBlock = { ...hit.block };
+   417→   417→        breakProgress = 0;
+   418→   418→      }
+   419→   419→
+   420→   420→      breakProgress += 1 / 60; // approx
+   421→   421→      const breakTime = def.hardness;
+   422→   422→      if (breakProgress >= breakTime) {
+   423→   423→        // Break!
+   424→   424→        world.setBlock(hit.block.x, hit.block.y, hit.block.z, 'air');
+   425→   425→        // Drops
+   426→   426→        if (def.drops) {
+   427→   427→          for (const drop of def.drops) {
+   428→   428→            addToInventory(drop.item, drop.count);
+   429→   429→          }
+   430→   430→        }
+   431→   431→        // Mark surrounding chunks for rebuild
+   432→   432→        markChunksDirty(hit.block.x, hit.block.y, hit.block.z);
+   433→   433→        breakingBlock = null;
+   434→   434→        breakProgress = 0;
+   435→   435→      }
+   436→   436→    }
+   437→   437→
+   438→   438→    function tryPlaceBlock() {
+   439→   439→      const hit = getLookingAt();
+   440→   440→      if (!hit.hit) return;
+   441→   441→
+   442→   442→      // Selected block from hotbar
+   443→   443→      const blockToPlace = hotbar[selectedSlot];
+   444→   444→      if (!blockToPlace) return;
+   445→   445→      const def = BLOCKS[blockToPlace];
+   446→   446→      if (def.variant === 'cross' || blockToPlace === 'torch') {
+   447→   447→        // place at adjacent
+   448→   448→      }
+   449→   449→
+   450→   450→      // Count in inventory
+   451→   451→      if (getInventoryCount(blockToPlace) <= 0) {
+   452→   452→        setMessage(`Brak ${def.name} w ekwipunku`, 1200);
+   453→   453→        return;
+   454→   454→      }
+   455→   455→
+   456→   456→      // Place at adjacent position
+   457→   457→      const px = hit.block.x + hit.normal.x;
+   458→   458→      const py = hit.block.y + hit.normal.y;
+   459→   459→      const pz = hit.block.z + hit.normal.z;
+   460→   460→
+   461→   461→      // Don't place inside player
+   462→   462→      const playerMinX = player.position.x - 0.3;
+   463→   463→      const playerMaxX = player.position.x + 0.3;
+   464→   464→      const playerMinY = player.position.y;
+   465→   465→      const playerMaxY = player.position.y + 1.8;
+   466→   466→      const playerMinZ = player.position.z - 0.3;
+   467→   467→      const playerMaxZ = player.position.z + 0.3;
+   468→   468→      if (
+   469→   469→        px + 1 > playerMinX && px < playerMaxX &&
+   470→   470→        py + 1 > playerMinY && py < playerMaxY &&
+   471→   471→        pz + 1 > playerMinZ && pz < playerMaxZ &&
+   472→   472→        def.solid
+   473→   473→      ) {
+   474→   474→        return;
+   475→   475→      }
+   476→   476→
+   477→   477→      // Check existing block
+   478→   478→      const existing = world.getBlock(px, py, pz);
+   479→   479→      if (existing !== 'air' && existing !== 'water') return;
+   480→   480→
+   481→   481→      world.setBlock(px, py, pz, blockToPlace);
+   482→   482→      removeFromInventory(blockToPlace, 1);
+   483→   483→      markChunksDirty(px, py, pz);
+   484→   484→    }
+   485→   485→
+   486→   486→    function markChunksDirty(x: number, y: number, z: number) {
+   487→   487→      // Determine affected chunks
+   488→   488→      const cx = Math.floor(x / 16);
+   489→   489→      const cz = Math.floor(z / 16);
+   490→   490→      const lx = ((x % 16) + 16) % 16;
+   491→   491→      const lz = ((z % 16) + 16) % 16;
+   492→   492→      chunkManager.rebuildChunk(cx, cz);
+   493→   493→      if (lx === 0) chunkManager.rebuildChunk(cx - 1, cz);
+   494→   494→      if (lx === 15) chunkManager.rebuildChunk(cx + 1, cz);
+   495→   495→      if (lz === 0) chunkManager.rebuildChunk(cx, cz - 1);
+   496→   496→      if (lz === 15) chunkManager.rebuildChunk(cx, cz + 1);
+   497→   497→    }
+   498→   498→
+   499→   499→    // === Physics / movement ===
+   500→   500→    function checkCollision(x: number, y: number, z: number): boolean {
+   501→   501→      const minX = Math.floor(x - 0.3);
+   502→   502→      const maxX = Math.floor(x + 0.3);
+   503→   503→      const minY = Math.floor(y);
+   504→   504→      const maxY = Math.floor(y + 1.79);
+   505→   505→      const minZ = Math.floor(z - 0.3);
+   506→   506→      const maxZ = Math.floor(z + 0.3);
+   507→   507→      for (let bx = minX; bx <= maxX; bx++) {
+   508→   508→        for (let by = minY; by <= maxY; by++) {
+   509→   509→          for (let bz = minZ; bz <= maxZ; bz++) {
+   510→   510→            const bt = world.getBlock(bx, by, bz);
+   511→   511→            if (BLOCKS[bt].solid) return true;
+   512→   512→          }
+   513→   513→        }
+   514→   514→      }
+   515→   515→      return false;
+   516→   516→    }
+   517→   517→
+   518→   518→    function isInWater(x: number, y: number, z: number): boolean {
+   519→   519→      const by = Math.floor(y + 0.5);
+   520→   520→      const bt = world.getBlock(Math.floor(x), by, Math.floor(z));
+   521→   521→      return bt === 'water';
+   522→   522→    }
+   523→   523→
+   524→   524→    function updatePlayer(dt: number) {
+   525→   525→      if (stateRef.current.dead) return;
+   526→   526→
+   527→   527→      // Stamina regen
+   528→   528→      if (!leftMouseDown && stateRef.current.stamina < stateRef.current.maxStamina) {
+   529→   529→        stateRef.current.stamina = Math.min(stateRef.current.maxStamina, stateRef.current.stamina + dt * 12);
+   530→   530→      }
+   531→   531→
+   532→   532→      // Hunger drain
+   533→   533→      const moving = keys['KeyW'] || keys['KeyA'] || keys['KeyS'] || keys['KeyD'];
+   534→   534→      const sprinting = moving && keys['ShiftLeft'] && stateRef.current.stamina > 0;
+   535→   535→      const hungerRate = sprinting ? 0.15 : moving ? 0.05 : 0.02;
+   536→   536→      stateRef.current.hunger = Math.max(0, stateRef.current.hunger - dt * hungerRate);
+   537→   537→
+   538→   538→      // Health regen if fed
+   539→   539→      if (stateRef.current.hunger > 15 && stateRef.current.health < stateRef.current.maxHealth) {
+   540→   540→        stateRef.current.health = Math.min(stateRef.current.maxHealth, stateRef.current.health + dt * 0.5);
+   541→   541→      } else if (stateRef.current.hunger === 0) {
+   542→   542→        // Starving
+   543→   543→        stateRef.current.health = Math.max(0, stateRef.current.health - dt * 0.5);
+   544→   544→        if (stateRef.current.health <= 0) {
+   545→   545→          stateRef.current.dead = true;
+   546→   546→          setMessage('Umarłeś z głodu! Kliknij aby zrespawnować.', 99999);
+   547→   547→          syncUI();
+   548→   548→          return;
+   549→   549→        }
+   550→   550→      }
+   551→   551→
+   552→   552→      // Movement input
+   553→   553→      const speed = sprinting ? WORLD_CONFIG.SPRINT_SPEED : WORLD_CONFIG.WALK_SPEED;
+   554→   554→      const yaw = player.yaw;
+   555→   555→      const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+   556→   556→      const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+   557→   557→      const moveDir = new THREE.Vector3();
+   558→   558→      if (keys['KeyW']) moveDir.add(forward);
+   559→   559→      if (keys['KeyS']) moveDir.sub(forward);
+   560→   560→      if (keys['KeyD']) moveDir.add(right);
+   561→   561→      if (keys['KeyA']) moveDir.sub(right);
+   562→   562→      if (moveDir.lengthSq() > 0) {
+   563→   563→        moveDir.normalize().multiplyScalar(speed);
+   564→   564→      }
+   565→   565→
+   566→   566→      if (sprinting) {
+   567→   567→        stateRef.current.stamina = Math.max(0, stateRef.current.stamina - dt * 15);
+   568→   568→      }
+   569→   569→
+   570→   570→      if (player.flying) {
+   571→   571→        player.velocity.x = moveDir.x;
+   572→   572→        player.velocity.z = moveDir.z;
+   573→   573→        player.velocity.y = 0;
+   574→   574→        if (keys['Space']) player.velocity.y = WORLD_CONFIG.FLY_SPEED * 0.7;
+   575→   575→        if (keys['ShiftLeft']) player.velocity.y = -WORLD_CONFIG.FLY_SPEED * 0.7;
+   576→   576→      } else {
+   577→   577→        player.velocity.x = moveDir.x;
+   578→   578→        player.velocity.z = moveDir.z;
+   579→   579→
+   580→   580→        // Gravity
+   581→   581→        player.velocity.y += WORLD_CONFIG.GRAVITY * dt;
+   582→   582→        if (player.velocity.y < -50) player.velocity.y = -50;
+   583→   583→
+   584→   584→        // Water physics
+   585→   585→        if (isInWater(player.position.x, player.position.y, player.position.z)) {
+   586→   586→          player.velocity.y = Math.max(player.velocity.y, -3);
+   587→   587→          player.velocity.y *= 0.85;
+   588→   588→          if (keys['Space']) player.velocity.y = 4;
+   589→   589→        }
+   590→   590→
+   591→   591→        // Jump
+   592→   592→        if (keys['Space'] && player.onGround && stateRef.current.stamina > 5) {
+   593→   593→          player.velocity.y = WORLD_CONFIG.JUMP_VELOCITY;
+   594→   594→          player.onGround = false;
+   595→   595→          stateRef.current.stamina -= 3;
+   596→   596→        }
+   597→   597→      }
+   598→   598→
+   599→   599→      // Apply movement with collision (per-axis)
+   600→   600→      const dx = player.velocity.x * dt;
+   601→   601→      const dy = player.velocity.y * dt;
+   602→   602→      const dz = player.velocity.z * dt;
+   603→   603→
+   604→   604→      // X axis
+   605→   605→      if (dx !== 0 && !checkCollision(player.position.x + dx, player.position.y, player.position.z)) {
+   606→   606→        player.position.x += dx;
+   607→   607→      } else {
+   608→   608→        player.velocity.x = 0;
+   609→   609→      }
+   610→   610→      // Z axis
+   611→   611→      if (dz !== 0 && !checkCollision(player.position.x, player.position.y, player.position.z + dz)) {
+   612→   612→        player.position.z += dz;
+   613→   613→      } else {
+   614→   614→        player.velocity.z = 0;
+   615→   615→      }
+   616→   616→      // Y axis
+   617→   617→      if (dy !== 0 && !checkCollision(player.position.x, player.position.y + dy, player.position.z)) {
+   618→   618→        player.position.y += dy;
+   619→   619→        player.onGround = false;
+   620→   620→      } else {
+   621→   621→        if (dy < 0) player.onGround = true;
+   622→   622→        player.velocity.y = 0;
+   623→   623→      }
+   624→   624→
+   625→   625→      // Fall damage / void
+   626→   626→      if (player.position.y < -10) {
+   627→   627→        stateRef.current.health = 0;
+   628→   628→        stateRef.current.dead = true;
+   629→   629→        setMessage('Spadłeś w otchłań! Kliknij aby zrespawnować.', 99999);
+   630→   630→        syncUI();
+   631→   631→      }
+   632→   632→
+   633→   633→      // Update camera position
+   634→   634→      camera.position.set(player.position.x, player.position.y + 1.6, player.position.z);
+   635→   635→      const euler = new THREE.Euler(player.pitch, player.yaw, 0, 'YXZ');
+   636→   636→      camera.quaternion.setFromEuler(euler);
+   637→   637→
+   638→   638→      // Breaking
+   639→   639→      if (leftMouseDown) {
+   640→   640→        if (placeCooldown > 0) placeCooldown -= dt;
+   641→   641→        tryBreakBlock();
+   642→   642→      }
+   643→   643→
+   644→   644→      stateRef.current.position = { x: player.position.x, y: player.position.y, z: player.position.z };
+   645→   645→    }
+   646→   646→
+   647→   647→    // === Day/night cycle ===
+   648→   648→    const dayLength = 240; // 4 minutes per day
+   649→   649→    let time = 0.35; // start morning
+   650→   650→
+   651→   651→    function updateDayNight(dt: number) {
+   652→   652→      time = (time + dt / dayLength) % 1;
+   653→   653→      stateRef.current.time = time;
+   654→   654→      stateRef.current.isDay = time > 0.22 && time < 0.78;
+   655→   655→
+   656→   656→      // Sun position
+   657→   657→      const sunAngle = (time - 0.25) * Math.PI * 2;
+   658→   658→      const sunHeight = Math.sin(sunAngle);
+   659→   659→      const sunX = Math.cos(sunAngle) * 80;
+   660→   660→      sun.position.set(sunX, sunHeight * 80 + 5, 30);
+   661→   661→
+   662→   662→      // Light intensity
+   663→   663→      const dayFactor = Math.max(0, Math.sin(sunAngle));
+   664→   664→      sun.intensity = 0.2 + dayFactor * 1.0;
+   665→   665→      ambient.intensity = 0.25 + dayFactor * 0.35;
+   666→   666→      hemi.intensity = 0.2 + dayFactor * 0.3;
+   667→   667→
+   668→   668→      // Moon
+   669→   669→      moon.position.set(-sunX, -sunHeight * 80 + 5, -30);
+   670→   670→      moon.intensity = (1 - dayFactor) * 0.3;
+   671→   671→
+   672→   672→      // Sky color
+   673→   673→      const dayColor = new THREE.Color('#9fc8ec');
+   674→   674→      const nightColor = new THREE.Color('#0a1535');
+   675→   675→      const sunsetColor = new THREE.Color('#f4a261');
+   676→   676→      const skyColor = new THREE.Color();
+   677→   677→      if (dayFactor > 0.3) {
+   678→   678→        skyColor.copy(dayColor);
+   679→   679→      } else if (dayFactor > 0) {
+   680→   680→        // sunrise/sunset blend
+   681→   681→        const t = dayFactor / 0.3;
+   682→   682→        skyColor.copy(sunsetColor).lerp(dayColor, t);
+   683→   683→      } else {
+   684→   684→        skyColor.copy(nightColor);
+   685→   685→      }
+   686→   686→      scene.background = skyColor;
+   687→   687→      if (scene.fog) {
+   688→   688→        (scene.fog as THREE.Fog).color.copy(skyColor);
+   689→   689→      }
+   690→   690→    }
+   691→   691→
+   692→   692→    // === Block highlight (wireframe box at looked-at block) ===
+   693→   693→    const highlightGeo = new THREE.BoxGeometry(1.001, 1.001, 1.001);
+   694→   694→    const highlightEdges = new THREE.EdgesGeometry(highlightGeo);
+   695→   695→    const highlightMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 });
+   696→   696→    const highlight = new THREE.LineSegments(highlightEdges, highlightMat);
+   697→   697→    highlight.visible = false;
+   698→   698→    scene.add(highlight);
+   699→   699→
+   700→   700→    // Break overlay
+   701→   701→    const breakOverlayGeo = new THREE.BoxGeometry(1.02, 1.02, 1.02);
+   702→   702→    const breakOverlayMat = new THREE.MeshBasicMaterial({
+   703→   703→      color: 0x000000,
+   704→   704→      transparent: true,
+   705→   705→      opacity: 0,
+   706→   706→      depthWrite: false,
+   707→   707→    });
+   708→   708→    const breakOverlay = new THREE.Mesh(breakOverlayGeo, breakOverlayMat);
+   709→   709→    breakOverlay.visible = false;
+   710→   710→    scene.add(breakOverlay);
+   711→   711→
+   712→   712→    // === Main loop ===
+   713→   713→    let lastTime = performance.now();
+   714→   714→    let frameCount = 0;
+   715→   715→    let fpsTime = 0;
+   716→   716→    let fps = 0;
+   717→   717→    let uiSyncTimer = 0;
+   718→   718→    let chunkUpdateAccum = 0;
+   719→   719→    let running = true;
+   720→   720→
+   721→   721→    function frame() {
+   722→   722→      if (!running) return;
+   723→   723→      requestAnimationFrame(frame);
+   724→   724→
+   725→   725→      const now = performance.now();
+   726→   726→      const dt = Math.min(0.05, (now - lastTime) / 1000);
+   727→   727→      lastTime = now;
+   728→   728→      frameCount++;
+   729→   729→      fpsTime += dt;
+   730→   730→      if (fpsTime > 0.5) {
+   731→   731→        fps = Math.round(frameCount / fpsTime);
+   732→   732→        frameCount = 0;
+   733→   733→        fpsTime = 0;
+   734→   734→        stateRef.current.fps = fps;
+   735→   735→      }
+   736→   736→
+   737→   737→      try {
+   738→   738→        if (!stateRef.current.paused && !stateRef.current.dead) {
+   739→   739→          updatePlayer(dt);
+   740→   740→          updateDayNight(dt);
+   741→   741→        }
+   742→   742→
+   743→   743→        // Update chunks - only when not paused (player has pointer lock)
+   744→   744→        // and throttle to spread cost across frames
+   745→   745→        if (!stateRef.current.paused) {
+   746→   746→          chunkUpdateAccum += dt;
+   747→   747→          if (chunkUpdateAccum > 0.25) {
+   748→   748→            chunkUpdateAccum = 0;
+   749→   749→            chunkManager.update(player.position.x, player.position.z, 1);
+   750→   750→          }
+   751→   751→        }
+   752→   752→        stateRef.current.chunkCount = chunkManager.chunks.size;
+   753→   753→        stateRef.current.triangleCount = Math.round(chunkManager.triangleCount);
+   754→   754→
+   755→   755→      // Update highlight
+   756→   756→      const hit = getLookingAt();
+   757→   757→      if (hit.hit) {
+   758→   758→        highlight.visible = true;
+   759→   759→        highlight.position.set(hit.block.x + 0.5, hit.block.y + 0.5, hit.block.z + 0.5);
+   760→   760→        stateRef.current.lookingAt = hit.blockType;
+   761→   761→      } else {
+   762→   762→        highlight.visible = false;
+   763→   763→        stateRef.current.lookingAt = null;
+   764→   764→      }
+   765→   765→
+   766→   766→      // Break overlay
+   767→   767→      if (leftMouseDown && breakingBlock) {
+   768→   768→        breakOverlay.visible = true;
+   769→   769→        breakOverlay.position.set(breakingBlock.x + 0.5, breakingBlock.y + 0.5, breakingBlock.z + 0.5);
+   770→   770→        const def = BLOCKS[world.getBlock(breakingBlock.x, breakingBlock.y, breakingBlock.z)];
+   771→   771→        const progress = breakProgress / Math.max(0.1, def.hardness);
+   772→   772→        breakOverlayMat.opacity = Math.min(0.5, progress * 0.5);
+   773→   773→      } else {
+   774→   774→        breakOverlay.visible = false;
+   775→   775→      }
+   776→   776→
+   777→   777→      // Determine biome at player position
+   778→   778→      const wx = Math.floor(player.position.x);
+   779→   779→      const wz = Math.floor(player.position.z);
+   780→   780→      const groundBlock = world.getBlock(wx, Math.floor(player.position.y - 0.5), wz);
+   781→   781→      let biome = 'plains';
+   782→   782→      if (groundBlock === 'sand') biome = 'pustynia';
+   783→   783→      else if (groundBlock === 'snow') biome = 'tundra';
+   784→   784→      else if (groundBlock === 'stone') biome = 'góry';
+   785→   785→      else if (groundBlock === 'water') biome = 'woda';
+   786→   786→      else if (groundBlock === 'grass') biome = 'łąka';
+   787→   787→      stateRef.current.biome = biome;
+   788→   788→
+   789→   789→      // Sync UI (throttled)
+   790→   790→      uiSyncTimer += dt;
+   791→   791→      if (uiSyncTimer > 0.1) {
+   792→   792→        uiSyncTimer = 0;
+   793→   793→        // Push hotbar & inventory snapshot to UI
+   794→   794→        stateRef.current.hotbar = [...hotbar];
+   795→   795→        stateRef.current.inventory = inventory.filter(i => i.count > 0 && i.block !== 'air');
+   796→   796→        syncUI();
+   797→   797→      }
+   798→   798→
+   799→   799→      renderer.render(scene, camera);
+   800→   800→      } catch (err) {
+   801→   801→        console.error('Game frame error:', err);
+   802→   802→      }
+   803→   803→    }
+   804→   804→
+   805→   805→    frame();
+   806→   806→
+   807→   807→    // === Public control API ===
+   808→   808→    gameRef.current = {
+   809→   809→      start: () => {
+   810→   810→        canvas.requestPointerLock();
+   811→   811→      },
+   812→   812→      respawn: () => {
+   813→   813→        const s = world.findSpawn();
+   814→   814→        player.position = { x: s.x, y: s.y, z: s.z };
+   815→   815→        player.velocity = { x: 0, y: 0, z: 0 };
+   816→   816→        stateRef.current.health = 20;
+   817→   817→        stateRef.current.hunger = 20;
+   818→   818→        stateRef.current.stamina = 100;
+   819→   819→        stateRef.current.dead = false;
+   820→   820→        stateRef.current.message = null;
+   821→   821→        syncUI();
+   822→   822→      },
+   823→   823→      setHotbarSlot: (slot: number, block: BlockType | null) => {
+   824→   824→        if (slot >= 0 && slot < HOTBAR_SLOTS) {
+   825→   825→          hotbar[slot] = block;
+   826→   826→        }
+   827→   827→      },
+   828→   828→      getInventory: () => inventory,
+   829→   829→      getHotbar: () => hotbar,
+   830→   830→      moveItemToHotbar: (invIndex: number, hotbarSlot: number) => {
+   831→   831→        if (invIndex < 0 || invIndex >= inventory.length) return;
+   832→   832→        if (hotbarSlot < 0 || hotbarSlot >= HOTBAR_SLOTS) return;
+   833→   833→        const invItem = inventory[invIndex];
+   834→   834→        if (invItem.count === 0 || invItem.block === 'air') return;
+   835→   835→        const current = hotbar[hotbarSlot];
+   836→   836→        hotbar[hotbarSlot] = invItem.block;
+   837→   837→        if (current) {
+   838→   838→          invItem.block = current;
+   839→   839→        } else {
+   840→   840→          invItem.block = 'air';
+   841→   841→          invItem.count = 0;
+   842→   842→        }
+   843→   843→      },
+   844→   844→      addToInventoryFromUI: (block: BlockType, count: number) => addToInventory(block, count),
+   845→   845→      craftItem: (recipeId: string, recipes: any[]) => {
+   846→   846→        const recipe = recipes.find(r => r.id === recipeId);
+   847→   847→        if (!recipe) return false;
+   848→   848→        // Check ingredients
+   849→   849→        for (const ing of recipe.ingredients) {
+   850→   850→          if (getInventoryCount(ing.block) < ing.count) {
+   851→   851→            setMessage(`Brak składników: ${BLOCKS[ing.block].name}`, 1800);
+   852→   852→            return false;
+   853→   853→          }
+   854→   854→        }
+   855→   855→        // Consume
+   856→   856→        for (const ing of recipe.ingredients) {
+   857→   857→          removeFromInventory(ing.block, ing.count);
+   858→   858→        }
+   859→   859→        // Add output (if it's a tool, simulate by adding the block as a marker)
+   860→   860→        addToInventory(recipe.output.block, recipe.output.count);
+   861→   861→        setMessage(`Wytworzono: ${recipe.name}`, 1500);
+   862→   862→        syncUI();
+   863→   863→        return true;
+   864→   864→      },
+   865→   865→      giveItem: (block: BlockType, count: number) => {
+   866→   866→        addToInventory(block, count);
+   867→   867→        setMessage(`Dodano ${count}× ${BLOCKS[block].name}`, 1200);
+   868→   868→        syncUI();
+   869→   869→      },
+   870→   870→      getState: () => stateRef.current,
+   871→   871→    };
+   872→   872→
+   873→   873→    // Cleanup
+   874→   874→    return () => {
+   875→   875→      running = false;
+   876→   876→      document.removeEventListener('keydown', onKeyDown);
+   877→   877→      document.removeEventListener('keyup', onKeyUp);
+   878→   878→      document.removeEventListener('mousedown', onMouseDown);
+   879→   879→      document.removeEventListener('mouseup', onMouseUp);
+   880→   880→      document.removeEventListener('mousemove', onMouseMove);
+   881→   881→      document.removeEventListener('wheel', onWheel);
+   882→   882→      document.removeEventListener('pointerlockchange', onPointerLockChange);
+   883→   883→      window.removeEventListener('resize', onResize);
+   884→   884→      renderer.dispose();
+   885→   885→    };
+   886→   886→  }, [canvasRef, syncUI, setMessage, enabled]);
+   887→   887→
+   888→   888→  const startGame = useCallback(() => {
+   889→   889→    gameRef.current?.start();
+   890→   890→  }, []);
+   891→   891→
+   892→   892→  const respawn = useCallback(() => {
+   893→   893→    gameRef.current?.respawn();
+   894→   894→  }, []);
+   895→   895→
+   896→   896→  const setHotbarSlot = useCallback((slot: number, block: BlockType | null) => {
+   897→   897→    gameRef.current?.setHotbarSlot(slot, block);
+   898→   898→  }, []);
+   899→   899→
+   900→   900→  const moveItemToHotbar = useCallback((invIndex: number, hotbarSlot: number) => {
+   901→   901→    gameRef.current?.moveItemToHotbar(invIndex, hotbarSlot);
+   902→   902→  }, []);
+   903→   903→
+   904→   904→  const craftItem = useCallback((recipeId: string, recipes: any[]) => {
+   905→   905→    return gameRef.current?.craftItem(recipeId, recipes);
+   906→   906→  }, []);
+   907→   907→
+   908→   908→  const giveItem = useCallback((block: BlockType, count: number) => {
+   909→   909→    gameRef.current?.giveItem(block, count);
+   910→   910→  }, []);
+   911→   911→
+   912→   912→  return {
+   913→   913→    uiState,
+   914→   914→    startGame,
+   915→   915→    respawn,
+   916→   916→    setHotbarSlot,
+   917→   917→    moveItemToHotbar,
+   918→   918→    craftItem,
+   919→   919→    giveItem,
+   920→   920→  };
+   921→   921→}
+   922→   922→

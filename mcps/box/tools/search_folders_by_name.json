@@ -1,0 +1,39 @@
+{
+  "name": "search_folders_by_name",
+  "description": "Searches for folders by name within Box using keyword matching. This tool helps locate specific folders by their names and can be scoped to search within a particular parent folder. Returns basic folder information including ID, type, and name for each matching folder.\n\nThe search performs a keyword-based match against folder names and can be limited to search within a specific ancestor folder. This is particularly useful for navigating complex folder structures, finding project folders, or locating organizational folders by name patterns.\n\nThe tool uses Box's search API with folder type filtering, ensuring only folders (not files) are returned in results. Search results are limited to preserve performance and can be paginated using the limit parameter.\n\n**Date Range Filters:**\nDate range filters properties of the input schema: created_at_range, updated_at_range, deleted_at_range. Use comma-separated RFC3339 timestamps.\n\n**Format:** \"start_date,end_date\" where:\n- Omit start date to search all folders before end date: \",2023-12-31T23:59:59Z\"\n- Omit end date to search from start date to the present: \"2023-01-01T00:00:00Z,\"\n- Both dates for specific range: \"2023-01-01T00:00:00Z,2023-12-31T23:59:59Z\"\n\n<examples>\nBasic folder search:\n<input>\n{\n  \"folder_name\": \"Project Documents\",\n  \"limit\": 30\n}\n</input>\n\nSearch within specific parent folder:\n<input>\n{\n  \"folder_name\": \"2024 Reports\", \n  \"ancestor_folder_id\": \"123456789\",\n  \"limit\": 50\n}\n</input>\n\nSearch for folders with partial name match:\n<input>\n{\n  \"folder_name\": \"Finance\",\n  \"limit\": 20\n}\n</input>\n\nLimited results search:\n<input>\n{\n  \"folder_name\": \"Marketing Campaign\",\n  \"ancestor_folder_id\": \"987654321\",\n  \"limit\": 10\n}\n</input>\n\nSearch in root directory and limit results by date:\n<input>\n{\n  \"folder_name\": \"Shared Resources\",\n  \"created_at_range\": \"2023-01-01T00:00:00Z,2023-12-31T23:59:59Z\"\n}\n</input>\n</examples>",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "folder_name": {
+        "type": "string",
+        "minLength": 1
+      },
+      "ancestor_folder_id": {
+        "type": "string"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 200,
+        "default": 30
+      },
+      "created_at_range": {
+        "type": "string",
+        "maxLength": 100
+      },
+      "updated_at_range": {
+        "type": "string",
+        "maxLength": 100
+      },
+      "deleted_at_range": {
+        "type": "string",
+        "maxLength": 100
+      }
+    },
+    "required": [
+      "folder_name"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

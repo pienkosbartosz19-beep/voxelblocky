@@ -1,0 +1,18 @@
+{
+  "name": "list_tasks",
+  "description": "Lists all tasks associated with a specific file. This tool retrieves task information including task details, message, status, and completion rule, due date from the Box platform.\n\nTasks in Box are used to assign work to users on files, allowing for collaboration and workflow management. This tool provides access to all tasks assigned to a particular file, helping with project management and task tracking.\n\nThe response includes comprehensive task details such as task type, assignee information, due dates, completion status, and any associated comments or messages.\n\n<examples>\nList tasks for a file:\n<input>\n{\n  \"file_id\": \"1234567890\"\n}\n</input>\n</examples>",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "file_id": {
+        "type": "string",
+        "pattern": "^\\d+$"
+      }
+    },
+    "required": [
+      "file_id"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

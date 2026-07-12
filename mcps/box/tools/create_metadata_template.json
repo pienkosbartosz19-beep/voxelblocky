@@ -1,0 +1,121 @@
+{
+  "name": "create_metadata_template",
+  "description": "Creates a new enterprise metadata template. scope must be \"enterprise\"; each field needs type, key, and display_name. Optional template_key, hidden, copy_instance_on_item_copy, enum/multiSelect/taxonomy. Enum color_id optional (0=Yellow, 1=Orange, 2=Red, 3=Purple, 4=LightBlue, 5=DarkBlue, 6=Green, 7=Grey); omit for default Yellow (0). SDK create sends keys only; non-default colors are PATCHed after create when color_id is set.\n\nOn success returns created template JSON (or JSON after color PATCH). If color PATCH fails, response still succeeds with colorApplyWarning.\n\n<examples>\nMinimal template with one string field:\n<input>\n{\n  \"scope\": \"enterprise\",\n  \"display_name\": \"Sample contract template\",\n  \"template_key\": \"sampleContract\",\n  \"fields\": [\n    {\n      \"type\": \"string\",\n      \"key\": \"Name\",\n      \"display_name\": \"Name\"\n    }\n  ]\n}\n</input>\n<output>\n{\n  \"id\": \"f7a9891f\",\n  \"scope\": \"enterprise_12345\",\n  \"templateKey\": \"sampleContract\",\n  \"displayName\": \"Sample contract template\",\n  \"hidden\": false,\n  \"fields\": [\n    {\n      \"type\": \"string\",\n      \"key\": \"Name\",\n      \"displayName\": \"Name\"\n    }\n  ]\n}\n</output>\n\nEnum field with classification colors (color_id optional per option):\n<input>\n{\n  \"scope\": \"enterprise\",\n  \"display_name\": \"Data classes\",\n  \"template_key\": \"dataClasses\",\n  \"fields\": [\n    {\n      \"type\": \"enum\",\n      \"key\": \"tier\",\n      \"display_name\": \"Tier\",\n      \"options\": [\n        { \"key\": \"Public\", \"color_id\": 6 },\n        { \"key\": \"Internal\", \"color_id\": 4 },\n        { \"key\": \"Restricted\", \"color_id\": 2 }\n      ]\n    }\n  ]\n}\n</input>\n</examples>",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "scope": {
+        "type": "string",
+        "const": "enterprise",
+        "description": "Must be \"enterprise\". Apps cannot create global templates."
+      },
+      "display_name": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Display name of the template in Box UI and APIs."
+      },
+      "template_key": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Unique key within the enterprise; if omitted, Box derives one from display_name."
+      },
+      "hidden": {
+        "type": "boolean",
+        "description": "If true, template is API-only and not shown in the Box web app."
+      },
+      "copy_instance_on_item_copy": {
+        "type": "boolean",
+        "description": "Whether to copy metadata when a file/folder is copied."
+      },
+      "fields": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "string",
+                "float",
+                "date",
+                "enum",
+                "multiSelect",
+                "taxonomy"
+              ]
+            },
+            "key": {
+              "type": "string",
+              "minLength": 1
+            },
+            "display_name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": {
+              "type": "string"
+            },
+            "hidden": {
+              "type": "boolean"
+            },
+            "options": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "color_id": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 7,
+                    "description": "Optional enum color 0–7; omit for default Yellow (0)."
+                  }
+                },
+                "required": [
+                  "key"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "taxonomy_key": {
+              "type": "string"
+            },
+            "namespace": {
+              "type": "string"
+            },
+            "options_rules": {
+              "type": "object",
+              "properties": {
+                "multi_select": {
+                  "type": "boolean"
+                },
+                "selectable_levels": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "key",
+            "display_name"
+          ],
+          "additionalProperties": false
+        },
+        "description": "Ordered field definitions (string, float, date, enum, multiSelect, or taxonomy)."
+      }
+    },
+    "required": [
+      "scope",
+      "display_name"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

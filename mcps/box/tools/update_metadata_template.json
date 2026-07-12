@@ -1,0 +1,94 @@
+{
+  "name": "update_metadata_template",
+  "description": "Updates a metadata template schema (PUT /2.0/metadata_templates/{scope}/{template_key}/schema). Use scope and template_key from list_metadata_templates or get_metadata_template_schema. Each operation needs op; use camelCase in data per Box API.\n\nShield classifications (template_key \"securityClassification-6VMVochwUWo\", fieldKey \"Box__Security__Classification__Key\"): set color in data.staticConfig.classification.colorID (0=Yellow, 1=Orange, 2=Red, 3=Purple, 4=LightBlue, 5=DarkBlue, 6=Green, 7=Grey). Top-level color_id/colorID is auto-rewritten before the API call.\n\nOn success returns updated template JSON.\n\n<examples>\nRename the template:\n<input>\n{\n  \"scope\": \"enterprise\",\n  \"template_key\": \"sampleContract\",\n  \"operations\": [\n    {\n      \"op\": \"editTemplate\",\n      \"data\": {\n        \"displayName\": \"Rename template\"\n      }\n    }\n  ]\n}\n</input>\n<output>\n{\n  \"id\": \"f7a9891f\",\n  \"scope\": \"enterprise_12345\",\n  \"templateKey\": \"sampleContract\",\n  \"displayName\": \"Rename template\",\n  \"hidden\": false,\n  \"fields\": [\n    {\n      \"type\": \"string\",\n      \"key\": \"Name\",\n      \"displayName\": \"Name\"\n    }\n  ]\n}\n</output>\n\nAdd a string field:\n<input>\n{\n  \"scope\": \"enterprise\",\n  \"template_key\": \"sampleContract\",\n  \"operations\": [\n    {\n      \"op\": \"addField\",\n      \"data\": {\n        \"type\": \"string\",\n        \"key\": \"matterId\",\n        \"displayName\": \"Matter ID\"\n      }\n    }\n  ]\n}\n</input>\n<output>\n{\n  \"id\": \"f7a9891f\",\n  \"scope\": \"enterprise_12345\",\n  \"templateKey\": \"sampleContract\",\n  \"displayName\": \"Rename contract template\",\n  \"fields\": [\n    {\n      \"type\": \"string\",\n      \"key\": \"counterparty\",\n      \"displayName\": \"Counterparty\"\n    },\n    {\n      \"type\": \"string\",\n      \"key\": \"matterId\",\n      \"displayName\": \"Matter ID\"\n    }\n  ]\n}\n</output>\n</examples>",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "scope": {
+        "type": "string",
+        "enum": [
+          "enterprise",
+          "global"
+        ],
+        "description": "Template scope (enterprise or global)."
+      },
+      "template_key": {
+        "type": "string",
+        "minLength": 1,
+        "description": "templateKey from list_metadata_templates or get_metadata_template_schema."
+      },
+      "operations": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "editTemplate",
+                "addField",
+                "reorderFields",
+                "addEnumOption",
+                "reorderEnumOptions",
+                "reorderMultiSelectOptions",
+                "addMultiSelectOption",
+                "editField",
+                "removeField",
+                "editEnumOption",
+                "removeEnumOption",
+                "editMultiSelectOption",
+                "removeMultiSelectOption"
+              ],
+              "description": "Schema operation type (Box metadata template update API): template edits, field add/edit/remove/reorder, enum and multiSelect option changes."
+            },
+            "data": {
+              "type": "object",
+              "additionalProperties": {},
+              "description": "Payload for the operation; shape depends on op."
+            },
+            "fieldKey": {
+              "type": "string"
+            },
+            "fieldKeys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "enumOptionKey": {
+              "type": "string"
+            },
+            "enumOptionKeys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "multiSelectOptionKey": {
+              "type": "string"
+            },
+            "multiSelectOptionKeys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "additionalProperties": false
+        },
+        "minItems": 1,
+        "description": "Atomic list of schema operations applied in order (see Box metadata template update API)."
+      }
+    },
+    "required": [
+      "scope",
+      "template_key",
+      "operations"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "move_folder",
+  "description": "Moves an existing folder to a new parent in Box using PUT /folders/{id} (Update folder). The folder keeps the same ID; only its parent changes. This is **not** for restoring items from trash.\n\n**You must set `parent_folder_id`** to the folder ID that will become the new parent (use `\"0\"` for the user's root folder). Optionally set `name` to rename the folder while moving.\n\n**Key features:**\n- External-access guard on the folder being moved and on the destination parent (same pattern as other folder write tools)\n\n<examples>\nMove a folder under another folder:\n{\n  \"folder_id\": \"123456789\",\n  \"parent_folder_id\": \"987654321\"\n}\n\nMove a folder to the user's root:\n{\n  \"folder_id\": \"123456789\",\n  \"parent_folder_id\": \"0\"\n}\n</examples>",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "folder_id": {
+        "type": "string",
+        "minLength": 1
+      },
+      "parent_folder_id": {
+        "type": "string",
+        "minLength": 1
+      },
+      "name": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "folder_id",
+      "parent_folder_id"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

@@ -1,0 +1,588 @@
+     1→import type { BlockDef, BlockType, CraftingRecipe, Quest } from './types';
+     2→import { TILES } from './textureAtlas';
+     3→
+     4→// Helper: many blocks share the same tile for all faces.
+     5→function cube(name: string, tile: number, color: string, opts: Partial<BlockDef> = {}): BlockDef {
+     6→  return {
+     7→    id: name as BlockType,
+     8→    name,
+     9→    color,
+    10→    tiles: { all: tile },
+    11→    solid: true,
+    12→    breakable: true,
+    13→    tool: 'hand',
+    14→    hardness: 1.0,
+    15→    ...opts,
+    16→  } as BlockDef;
+    17→}
+    18→
+    19→// Helper: grass-style block (top / side / bottom different)
+    20→function grassyBlock(name: string, topTile: number, sideTile: number, bottomTile: number, color: string, sideColor: string, bottomColor: string, opts: Partial<BlockDef> = {}): BlockDef {
+    21→  return {
+    22→    id: name as BlockType,
+    23→    name,
+    24→    color,
+    25→    sideColor,
+    26→    bottomColor,
+    27→    tiles: { top: topTile, side: sideTile, bottom: bottomTile },
+    28→    solid: true,
+    29→    breakable: true,
+    30→    tool: 'shovel',
+    31→    hardness: 0.6,
+    32→    ...opts,
+    33→  } as BlockDef;
+    34→}
+    35→
+    36→// Helper: wood block (bark sides + rings on top/bottom)
+    37→function woodBlock(name: string, sideTile: number, topTile: number, color: string, sideColor: string): BlockDef {
+    38→  return {
+    39→    id: name as BlockType,
+    40→    name,
+    41→    color,
+    42→    sideColor,
+    43→    bottomColor: sideColor,
+    44→    tiles: { top: topTile, side: sideTile, bottom: topTile },
+    45→    solid: true,
+    46→    breakable: true,
+    47→    tool: 'axe',
+    48→    hardness: 1.2,
+    49→    isWood: true,
+    50→  } as BlockDef;
+    51→}
+    52→
+    53→// Helper: leaves
+    54→function leavesBlock(name: string, tile: number, color: string): BlockDef {
+    55→  return {
+    56→    id: name as BlockType,
+    57→    name,
+    58→    color,
+    59→    tiles: { all: tile },
+    60→    solid: true,
+    61→    breakable: true,
+    62→    tool: 'hand',
+    63→    hardness: 0.2,
+    64→    transparent: true,
+    65→    isLeaves: true,
+    66→    drops: [{ item: name as BlockType, count: 1 }],
+    67→  } as BlockDef;
+    68→}
+    69→
+    70→// Helper: cross-shape plant
+    71→function crossPlant(name: string, tile: number, color: string, hardness = 0.1): BlockDef {
+    72→  return {
+    73→    id: name as BlockType,
+    74→    name,
+    75→    color,
+    76→    tiles: { all: tile },
+    77→    solid: false,
+    78→    breakable: true,
+    79→    tool: 'hand',
+    80→    hardness,
+    81→    transparent: true,
+    82→    variant: 'cross',
+    83→    drops: [{ item: name as BlockType, count: 1 }],
+    84→  } as BlockDef;
+    85→}
+    86→
+    87→export const BLOCKS: Record<BlockType, BlockDef> = {
+    88→  air: {
+    89→    id: 'air', name: 'Powietrze', color: '#000000', solid: false, breakable: false, hardness: 0, transparent: true,
+    90→  },
+    91→
+    92→  // === Terrain - grass & dirt variants ===
+    93→  grass: grassyBlock('grass', TILES.GRASS_TOP, TILES.GRASS_SIDE, TILES.DIRT, '#5fa843', '#7a5a3a', '#7a5a3a', { drops: [{ item: 'dirt', count: 1 }] }),
+    94→  grass_autumn: grassyBlock('grass_autumn', TILES.GRASS_AUTUMN_TOP, TILES.GRASS_AUTUMN_SIDE, TILES.DIRT, '#c8963c', '#7a5a3a', '#7a5a3a', { drops: [{ item: 'dirt', count: 1 }] }),
+    95→  grass_withered: grassyBlock('grass_withered', TILES.GRASS_WITHERED_TOP, TILES.GRASS_WITHERED_SIDE, TILES.DIRT, '#8c7838', '#7a5a3a', '#7a5a3a', { drops: [{ item: 'dirt', count: 1 }] }),
+    96→  grass_spring: grassyBlock('grass_spring', TILES.GRASS_SPRING_TOP, TILES.GRASS_SPRING_SIDE, TILES.DIRT, '#6eb440', '#7a5a3a', '#7a5a3a', { drops: [{ item: 'dirt', count: 1 }] }),
+    97→  snow_grass: grassyBlock('snow_grass', TILES.SNOW_GRASS_TOP, TILES.SNOW_GRASS_SIDE, TILES.DIRT, '#f5f7fa', '#7a5a3a', '#7a5a3a', { drops: [{ item: 'dirt', count: 1 }] }),
+    98→  dirt: cube('dirt', TILES.DIRT, '#7a5a3a', { tool: 'shovel', hardness: 0.5, drops: [{ item: 'dirt', count: 1 }] }),
+    99→  dirt_dark: cube('dirt_dark', TILES.DIRT_DARK, '#503723', { tool: 'shovel', hardness: 0.5, drops: [{ item: 'dirt_dark', count: 1 }] }),
+   100→  dirt_path: cube('dirt_path', TILES.DIRT_PATH, '#8a6a40', { tool: 'shovel', hardness: 0.4, drops: [{ item: 'dirt', count: 1 }] }),
+   101→  mud: cube('mud', TILES.MUD, '#503c28', { tool: 'shovel', hardness: 0.6, drops: [{ item: 'dirt', count: 1 }] }),
+   102→  mud_dry: cube('mud_dry', TILES.MUD_DRY, '#6e5032', { tool: 'shovel', hardness: 0.7, drops: [{ item: 'dirt', count: 1 }] }),
+   103→
+   104→  // === Terrain - stone variants ===
+   105→  stone: cube('stone', TILES.STONE, '#8a8a8a', { tool: 'pickaxe', minToolTier: 1, hardness: 1.5, drops: [{ item: 'cobblestone', count: 1 }] }),
+   106→  cobblestone: cube('cobblestone', TILES.COBBLESTONE, '#6e6e6e', { tool: 'pickaxe', minToolTier: 1, hardness: 2.0, drops: [{ item: 'cobblestone', count: 1 }] }),
+   107→  mossy_stone: cube('mossy_stone', TILES.MOSSY_STONE, '#5a7a52', { tool: 'pickaxe', minToolTier: 1, hardness: 1.8, drops: [{ item: 'cobblestone', count: 1 }] }),
+   108→  mossy_cobble: cube('mossy_cobble', TILES.MOSSY_COBBLE, '#5a7a52', { tool: 'pickaxe', minToolTier: 1, hardness: 2.2, drops: [{ item: 'mossy_cobble', count: 1 }] }),
+   109→  cracked_stone: cube('cracked_stone', TILES.CRACKED_STONE, '#7a7a7a', { tool: 'pickaxe', minToolTier: 1, hardness: 1.4, drops: [{ item: 'cobblestone', count: 1 }] }),
+   110→  granite: cube('granite', TILES.GRANITE, '#b46e64', { tool: 'pickaxe', minToolTier: 1, hardness: 1.6, drops: [{ item: 'granite', count: 1 }] }),
+   111→  marble: cube('marble', TILES.MARBLE, '#e6e6eb', { tool: 'pickaxe', minToolTier: 2, hardness: 2.0, drops: [{ item: 'marble', count: 1 }] }),
+   112→  slate: cube('slate', TILES.SLATE, '#464b55', { tool: 'pickaxe', minToolTier: 1, hardness: 1.8, drops: [{ item: 'slate', count: 1 }] }),
+   113→  bedrock: cube('bedrock', TILES.BEDROCK, '#2a2a2a', { breakable: false, hardness: 999 }),
+   114→  bedrock_dark: cube('bedrock_dark', TILES.BEDROCK_DARK, '#1a1a1a', { breakable: false, hardness: 999 }),
+   115→
+   116→  // === Terrain - sand & gravel ===
+   117→  sand: cube('sand', TILES.SAND, '#e6d59a', { tool: 'shovel', hardness: 0.4, drops: [{ item: 'sand', count: 1 }] }),
+   118→  red_sand: cube('red_sand', TILES.RED_SANDSTONE, '#b4543c', { tool: 'shovel', hardness: 0.4, drops: [{ item: 'red_sand', count: 1 }] }),
+   119→  sandstone: cube('sandstone', TILES.SANDSTONE, '#dcc296', { tool: 'pickaxe', minToolTier: 1, hardness: 1.2, drops: [{ item: 'sandstone', count: 1 }] }),
+   120→  gravel: cube('gravel', TILES.GRAVEL, '#787878', { tool: 'shovel', hardness: 0.5, drops: [{ item: 'gravel', count: 1 }] }),
+   121→  clay: cube('clay', TILES.CLAY, '#a89580', { tool: 'shovel', hardness: 0.6, drops: [{ item: 'clay', count: 1 }] }),
+   122→  terracotta: cube('terracotta', TILES.TERRACOTTA, '#aa6446', { tool: 'pickaxe', minToolTier: 1, hardness: 1.4, drops: [{ item: 'terracotta', count: 1 }] }),
+   123→
+   124→  // === Snow & ice ===
+   125→  snow: cube('snow', TILES.SNOW, '#f5f7fa', { tool: 'shovel', hardness: 0.3, drops: [{ item: 'snow', count: 1 }] }),
+   126→  snow_dirty: cube('snow_dirty', TILES.SNOW_DIRTY, '#c8c8d0', { tool: 'shovel', hardness: 0.3, drops: [{ item: 'snow', count: 1 }] }),
+   127→  ice: { id: 'ice', name: 'Lód', color: '#a3d4ff', tiles: { all: TILES.ICE }, solid: true, breakable: true, tool: 'pickaxe', minToolTier: 1, hardness: 0.5, transparent: true, drops: [{ item: 'ice', count: 1 }] },
+   128→  ice_packed: cube('ice_packed', TILES.ICE_PACKED, '#7eb8e8', { tool: 'pickaxe', minToolTier: 1, hardness: 1.0, transparent: true, drops: [{ item: 'ice_packed', count: 1 }] }),
+   129→  ice_blue: cube('ice_blue', TILES.ICE_BLUE, '#5a9cd6', { tool: 'pickaxe', minToolTier: 2, hardness: 1.2, transparent: true, drops: [{ item: 'ice_blue', count: 1 }] }),
+   130→
+   131→  // === Water & liquids ===
+   132→  water: { id: 'water', name: 'Woda', color: '#2d7fd6', tiles: { all: TILES.WATER }, solid: false, breakable: false, hardness: 0, transparent: true, opacity: 0.7 },
+   133→  magma: { id: 'magma', name: 'Magma', color: '#dc5014', tiles: { all: TILES.MAGMA }, solid: false, breakable: false, hardness: 0, transparent: false, light: 15 },
+   134→  obsidian: cube('obsidian', TILES.OBSIDIAN, '#191423', { tool: 'pickaxe', minToolTier: 4, hardness: 6.0, drops: [{ item: 'obsidian', count: 1 }] }),
+   135→  ash: cube('ash', TILES.ASH, '#504b4b', { tool: 'shovel', hardness: 0.3, drops: [{ item: 'ash', count: 1 }] }),
+   136→  scorched: cube('scorched', TILES.SCORCHED, '#281c16', { tool: 'pickaxe', minToolTier: 1, hardness: 1.0, drops: [{ item: 'scorched', count: 1 }] }),
+   137→  slag: cube('slag', TILES.SLAG, '#3c3232', { tool: 'pickaxe', minToolTier: 2, hardness: 1.5, drops: [{ item: 'slag', count: 1 }] }),
+   138→
+   139→  // === Ores ===
+   140→  coal_ore: cube('coal_ore', TILES.COAL_ORE, '#1a1a1a', { tool: 'pickaxe', minToolTier: 1, hardness: 2.5, drops: [{ item: 'coal_block', count: 1 }] }),
+   141→  iron_ore: cube('iron_ore', TILES.IRON_ORE, '#c8a8a0', { tool: 'pickaxe', minToolTier: 2, hardness: 3.0, drops: [{ item: 'iron_ore', count: 1 }] }),
+   142→  copper_ore: cube('copper_ore', TILES.COPPER_ORE, '#c97b4a', { tool: 'pickaxe', minToolTier: 2, hardness: 3.0, drops: [{ item: 'copper_ore', count: 1 }] }),
+   143→  gold_ore: cube('gold_ore', TILES.GOLD_ORE, '#f7d046', { tool: 'pickaxe', minToolTier: 4, hardness: 4.0, drops: [{ item: 'gold_ore', count: 1 }] }),
+   144→  diamond_ore: cube('diamond_ore', TILES.DIAMOND_ORE, '#4ef0e3', { tool: 'pickaxe', minToolTier: 5, hardness: 8.0, drops: [{ item: 'diamond_ore', count: 1 }] }),
+   145→  sulfur_ore: cube('sulfur_ore', TILES.SULFUR_ORE, '#dcdc64', { tool: 'pickaxe', minToolTier: 2, hardness: 2.0, drops: [{ item: 'sulfur_ore', count: 1 }] }),
+   146→  mithril_ore: cube('mithril_ore', TILES.MITHRIL_ORE, '#78c8dc', { tool: 'pickaxe', minToolTier: 5, hardness: 9.0, drops: [{ item: 'mithril_ore', count: 1 }] }),
+   147→  tin_ore: cube('tin_ore', TILES.TIN_ORE, '#c8c8c8', { tool: 'pickaxe', minToolTier: 2, hardness: 2.5, drops: [{ item: 'tin_ore', count: 1 }] }),
+   148→  zinc_ore: cube('zinc_ore', TILES.ZINC_ORE, '#b4b4c8', { tool: 'pickaxe', minToolTier: 2, hardness: 2.5, drops: [{ item: 'zinc_ore', count: 1 }] }),
+   149→  salt_ore: cube('salt_ore', TILES.SALT_ORE, '#f0f0f5', { tool: 'pickaxe', minToolTier: 1, hardness: 1.5, drops: [{ item: 'salt_ore', count: 1 }] }),
+   150→
+   151→  // === Wood - oak (dąb) ===
+   152→  wood_oak: woodBlock('wood_oak', TILES.WOOD_OAK_SIDE, TILES.WOOD_OAK_TOP, '#6b4a2e', '#5a3d27'),
+   153→  planks_oak: cube('planks_oak', TILES.PLANKS_OAK, '#b5894d', { tool: 'axe', hardness: 1.0, drops: [{ item: 'planks_oak', count: 1 }] }),
+   154→  leaves_oak: leavesBlock('leaves_oak', TILES.LEAVES_OAK, '#3d7a2f'),
+   155→  sapling_oak: crossPlant('sapling_oak', TILES.SAPLING_OAK, '#3d7a2f', 0.05),
+   156→
+   157→  // === Wood - pine (sosna) ===
+   158→  wood_pine: woodBlock('wood_pine', TILES.WOOD_PINE_SIDE, TILES.WOOD_PINE_TOP, '#503723', '#321e14'),
+   159→  planks_pine: cube('planks_pine', TILES.PLANKS_PINE, '#8c5f37', { tool: 'axe', hardness: 1.0, drops: [{ item: 'planks_pine', count: 1 }] }),
+   160→  leaves_pine: leavesBlock('leaves_pine', TILES.LEAVES_PINE, '#285a32'),
+   161→  sapling_pine: crossPlant('sapling_pine', TILES.SAPLING_PINE, '#285a32', 0.05),
+   162→
+   163→  // === Wood - spruce (świerk) ===
+   164→  wood_spruce: woodBlock('wood_spruce', TILES.WOOD_SPRUCE_SIDE, TILES.WOOD_SPRUCE_TOP, '#5a3c28', '#372319'),
+   165→  planks_spruce: cube('planks_spruce', TILES.PLANKS_SPRUCE, '#96643c', { tool: 'axe', hardness: 1.0, drops: [{ item: 'planks_spruce', count: 1 }] }),
+   166→  leaves_spruce: leavesBlock('leaves_spruce', TILES.LEAVES_SPRUCE, '#234b2d'),
+   167→
+   168→  // === Wood - birch (brzoza) ===
+   169→  wood_birch: woodBlock('wood_birch', TILES.WOOD_BIRCH_SIDE, TILES.WOOD_BIRCH_TOP, '#e1dcde', '#b4afa9'),
+   170→  planks_birch: cube('planks_birch', TILES.PLANKS_BIRCH, '#d2c8be', { tool: 'axe', hardness: 1.0, drops: [{ item: 'planks_birch', count: 1 }] }),
+   171→  leaves_birch: leavesBlock('leaves_birch', TILES.LEAVES_BIRCH, '#5a9646'),
+   172→  sapling_birch: crossPlant('sapling_birch', TILES.SAPLING_BIRCH, '#5a9646', 0.05),
+   173→
+   174→  // === Autumn leaves (matching Lay of the Land reference) ===
+   175→  leaves_autumn_yellow: leavesBlock('leaves_autumn_yellow', TILES.LEAVES_AUTUMN_YELLOW, '#e6b428'),
+   176→  leaves_autumn_orange: leavesBlock('leaves_autumn_orange', TILES.LEAVES_AUTUMN_ORANGE, '#dc6e1e'),
+   177→  leaves_autumn_red: leavesBlock('leaves_autumn_red', TILES.LEAVES_AUTUMN_RED, '#b43228'),
+   178→  leaves_autumn_mixed: leavesBlock('leaves_autumn_mixed', TILES.LEAVES_AUTUMN_MIXED, '#c86428'),
+   179→  leaves_dry: leavesBlock('leaves_dry', TILES.LEAVES_DRY, '#a06e32'),
+   180→  leaves_cherry: leavesBlock('leaves_cherry', TILES.LEAVES_CHERRY, '#f0b4c8'),
+   181→  leaves_apple: leavesBlock('leaves_apple', TILES.LEAVES_APPLE, '#508c3c'),
+   182→  leaves_willow: leavesBlock('leaves_willow', TILES.LEAVES_WILLOW, '#78a046'),
+   183→
+   184→  // === Plants & decoration ===
+   185→  bush: { id: 'bush', name: 'Krzew', color: '#468232', tiles: { all: TILES.BUSH }, solid: false, breakable: true, tool: 'hand', hardness: 0.2, transparent: true, variant: 'cross', drops: [{ item: 'leaves_oak', count: 1 }] },
+   186→  bush_berry: { id: 'bush_berry', name: 'Krzew z Owocami', color: '#468232', tiles: { all: TILES.BUSH_BERRY }, solid: false, breakable: true, tool: 'hand', hardness: 0.2, transparent: true, variant: 'cross', drops: [{ item: 'bush_berry', count: 1 }] },
+   187→  berry_bush: { id: 'berry_bush', name: 'Borówka', color: '#3c6e2d', tiles: { all: TILES.BERRY_BUSH }, solid: false, breakable: true, tool: 'hand', hardness: 0.2, transparent: true, variant: 'cross', drops: [{ item: 'berry_bush', count: 1 }] },
+   188→  fern: crossPlant('fern', TILES.FERN, '#327a28', 0.1),
+   189→  dead_bush: crossPlant('dead_bush', TILES.DEAD_BUSH, '#78502d', 0.1),
+   190→  tall_grass: crossPlant('tall_grass', TILES.TALL_GRASS, '#5fa843', 0.05),
+   191→  reed: crossPlant('reed', TILES.REED, '#78502d', 0.1),
+   192→  lavender: crossPlant('lavender', TILES.LAVENDER, '#8c5ab4', 0.1),
+   193→  water_lily: { id: 'water_lily', name: 'Lilia Wodna', color: '#3c823c', tiles: { all: TILES.WATER_LILY }, solid: false, breakable: true, tool: 'hand', hardness: 0.1, transparent: true, variant: 'cross', drops: [{ item: 'water_lily', count: 1 }] },
+   194→  lily_pad: { id: 'lily_pad', name: 'Liść Liliowy', color: '#3c823c', tiles: { all: TILES.LILY_PAD }, solid: false, breakable: true, tool: 'hand', hardness: 0.1, transparent: true, variant: 'cross', drops: [{ item: 'lily_pad', count: 1 }] },
+   195→  vines: { id: 'vines', name: 'Pnącza', color: '#326e28', tiles: { all: TILES.VINES }, solid: false, breakable: true, tool: 'hand', hardness: 0.1, transparent: true, variant: 'cross', drops: [{ item: 'vines', count: 1 }] },
+   196→
+   197→  // Flowers
+   198→  flower_red: crossPlant('flower_red', TILES.FLOWER_RED, '#e63946', 0.05),
+   199→  flower_yellow: crossPlant('flower_yellow', TILES.FLOWER_YELLOW, '#f7c948', 0.05),
+   200→  flower_white: crossPlant('flower_white', TILES.FLOWER_WHITE, '#f0f0f0', 0.05),
+   201→  flower_purple: crossPlant('flower_purple', TILES.FLOWER_PURPLE, '#9c4dcc', 0.05),
+   202→  flower_blue: crossPlant('flower_blue', TILES.FLOWER_BLUE, '#3c6edc', 0.05),
+   203→
+   204→  // Mushrooms
+   205→  mushroom_brown: crossPlant('mushroom_brown', TILES.MUSHROOM_BROWN, '#c97b4a', 0.05),
+   206→  mushroom_red: crossPlant('mushroom_red', TILES.MUSHROOM_RED, '#dc3c3c', 0.05),
+   207→  mushroom_bush: { id: 'mushroom_bush', name: 'Kolonia Grzybów', color: '#c97b4a', tiles: { all: TILES.MUSHROOM_BROWN }, solid: false, breakable: true, tool: 'hand', hardness: 0.1, transparent: true, variant: 'cross', drops: [{ item: 'mushroom_brown', count: 2 }] },
+   208→
+   209→  // Cactus & pumpkin
+   210→  cactus: cube('cactus', TILES.CACTUS_SIDE, '#3d7a4a', { tool: 'hand', hardness: 0.4, drops: [{ item: 'cactus', count: 1 }], transparent: true }),
+   211→  pumpkin: { id: 'pumpkin', name: 'Dynia', color: '#e6772a', sideColor: '#dc6e1e', tiles: { top: TILES.PUMPKIN_TOP, side: TILES.PUMPKIN_SIDE, bottom: TILES.PUMPKIN_SIDE }, solid: true, breakable: true, tool: 'axe', hardness: 0.6, drops: [{ item: 'pumpkin', count: 1 }] },
+   212→  pumpkin_carved: { id: 'pumpkin_carved', name: 'Wyryta Dynia', color: '#e6772a', sideColor: '#dc6e1e', tiles: { top: TILES.PUMPKIN_TOP, side: TILES.PUMPKIN_FACE, bottom: TILES.PUMPKIN_SIDE }, solid: true, breakable: true, tool: 'axe', hardness: 0.6, light: 12, drops: [{ item: 'pumpkin_carved', count: 1 }] },
+   213→  pinecone: crossPlant('pinecone', TILES.PINECONE, '#78502d', 0.1),
+   214→  fallen_leaves: cube('fallen_leaves', TILES.FALLEN_LEAVES, '#b46e28', { tool: 'hand', hardness: 0.1, drops: [{ item: 'leaves_oak', count: 1 }], transparent: true }),
+   215→  leaf_pile: cube('leaf_pile', TILES.LEAF_PILE, '#78963c', { tool: 'hand', hardness: 0.1, drops: [{ item: 'leaves_oak', count: 1 }], transparent: true }),
+   216→
+   217→  // Rocks & crystals
+   218→  rock_moss: cube('rock_moss', TILES.ROCK_MOSS, '#5a7a52', { tool: 'pickaxe', minToolTier: 1, hardness: 1.5, drops: [{ item: 'cobblestone', count: 1 }] }),
+   219→  pebbles: crossPlant('pebbles', TILES.PEBBLES, '#8c8c8c', 0.1),
+   220→  boulder: cube('boulder', TILES.BOULDER, '#6e6e6e', { tool: 'pickaxe', minToolTier: 1, hardness: 2.0, drops: [{ item: 'cobblestone', count: 2 }] }),
+   221→  stalagmite: cube('stalagmite', TILES.STALAGMITE, '#6e6e6e', { tool: 'pickaxe', minToolTier: 1, hardness: 1.2, drops: [{ item: 'cobblestone', count: 1 }] }),
+   222→  crystal_blue: { id: 'crystal_blue', name: 'Niebieski Kryształ', color: '#64c8f0', tiles: { all: TILES.CRYSTAL_BLUE }, solid: true, breakable: true, tool: 'pickaxe', minToolTier: 3, hardness: 2.5, transparent: true, light: 8, drops: [{ item: 'crystal_blue', count: 1 }] },
+   223→  crystal_purple: { id: 'crystal_purple', name: 'Fioletowy Kryształ', color: '#b464dc', tiles: { all: TILES.CRYSTAL_PURPLE }, solid: true, breakable: true, tool: 'pickaxe', minToolTier: 3, hardness: 2.5, transparent: true, light: 8, drops: [{ item: 'crystal_purple', count: 1 }] },
+   224→  crystal_green: { id: 'crystal_green', name: 'Zielony Kryształ', color: '#64dc82', tiles: { all: TILES.CRYSTAL_GREEN }, solid: true, breakable: true, tool: 'pickaxe', minToolTier: 3, hardness: 2.5, transparent: true, light: 8, drops: [{ item: 'crystal_green', count: 1 }] },
+   225→  geode: cube('geode', TILES.GEODE, '#78467a', { tool: 'pickaxe', minToolTier: 3, hardness: 3.0, drops: [{ item: 'crystal_purple', count: 1 }] }),
+   226→  root: { id: 'root', name: 'Korzeń', color: '#5a3c25', tiles: { all: TILES.ROOT }, solid: false, breakable: true, tool: 'hand', hardness: 0.2, transparent: true, variant: 'cross', drops: [{ item: 'root', count: 1 }] },
+   227→  stump: cube('stump', TILES.STUMP, '#5a3c25', { tool: 'axe', hardness: 1.0, drops: [{ item: 'wood_oak', count: 1 }] }),
+   228→
+   229→  // === Light sources ===
+   230→  torch: { id: 'torch', name: 'Pochodnia', color: '#ffce5e', tiles: { all: TILES.TORCH }, solid: false, breakable: true, tool: 'hand', hardness: 0.1, transparent: true, light: 14, variant: 'thin', drops: [{ item: 'torch', count: 1 }] },
+   231→  lantern: { id: 'lantern', name: 'Latarenka', color: '#ffd56e', tiles: { all: TILES.LANTERN }, solid: true, breakable: true, tool: 'hand', hardness: 0.3, transparent: true, light: 15, drops: [{ item: 'lantern', count: 1 }] },
+   232→
+   233→  // === Glass ===
+   234→  glass: { id: 'glass', name: 'Szkło', color: '#cae3f5', tiles: { all: TILES.GLASS }, solid: true, breakable: true, tool: 'hand', hardness: 0.3, transparent: true, opacity: 0.3, drops: [] },
+   235→  glass_tinted: { id: 'glass_tinted', name: 'Przyciemniane Szkło', color: '#1e1e32', tiles: { all: TILES.GLASS_TINTED }, solid: true, breakable: true, tool: 'hand', hardness: 0.3, transparent: true, opacity: 0.5, drops: [{ item: 'glass_tinted', count: 1 }] },
+   236→  stained_red: { id: 'stained_red', name: 'Czerwone Witrażowe', color: '#b42828', tiles: { all: TILES.STAINED_RED }, solid: true, breakable: true, tool: 'hand', hardness: 0.3, transparent: true, opacity: 0.5, drops: [{ item: 'stained_red', count: 1 }] },
+   237→  stained_blue: { id: 'stained_blue', name: 'Niebieskie Witrażowe', color: '#2850b4', tiles: { all: TILES.STAINED_BLUE }, solid: true, breakable: true, tool: 'hand', hardness: 0.3, transparent: true, opacity: 0.5, drops: [{ item: 'stained_blue', count: 1 }] },
+   238→  stained_green: { id: 'stained_green', name: 'Zielone Witrażowe', color: '#28823c', tiles: { all: TILES.STAINED_GREEN }, solid: true, breakable: true, tool: 'hand', hardness: 0.3, transparent: true, opacity: 0.5, drops: [{ item: 'stained_green', count: 1 }] },
+   239→  stained_yellow: { id: 'stained_yellow', name: 'Żółte Witrażowe', color: '#dcc83c', tiles: { all: TILES.STAINED_YELLOW }, solid: true, breakable: true, tool: 'hand', hardness: 0.3, transparent: true, opacity: 0.5, drops: [{ item: 'stained_yellow', count: 1 }] },
+   240→
+   241→  // === Bricks & crafted blocks ===
+   242→  brick: cube('brick', TILES.BRICK, '#96463c', { tool: 'pickaxe', minToolTier: 1, hardness: 1.8, drops: [{ item: 'brick', count: 1 }] }),
+   243→  brick_mossy: cube('brick_mossy', TILES.BRICK_MOSSY, '#7a403a', { tool: 'pickaxe', minToolTier: 1, hardness: 2.0, drops: [{ item: 'brick_mossy', count: 1 }] }),
+   244→  sandstone_brick: cube('sandstone_brick', TILES.SANDSTONE_BRICK, '#dcc89c', { tool: 'pickaxe', minToolTier: 1, hardness: 1.4, drops: [{ item: 'sandstone_brick', count: 1 }] }),
+   245→  stone_brick: cube('stone_brick', TILES.STONE_BRICK, '#787878', { tool: 'pickaxe', minToolTier: 1, hardness: 1.6, drops: [{ item: 'stone_brick', count: 1 }] }),
+   246→  stone_brick_mossy: cube('stone_brick_mossy', TILES.STONE_BRICK_MOSSY, '#6e6e5a', { tool: 'pickaxe', minToolTier: 1, hardness: 1.8, drops: [{ item: 'stone_brick_mossy', count: 1 }] }),
+   247→  cobble_wall: cube('cobble_wall', TILES.COBBLE_WALL, '#6e6e6e', { tool: 'pickaxe', minToolTier: 1, hardness: 2.0, drops: [{ item: 'cobble_wall', count: 1 }] }),
+   248→  clay_brick: cube('clay_brick', TILES.CLAY_BRICK, '#b46e50', { tool: 'pickaxe', minToolTier: 1, hardness: 1.6, drops: [{ item: 'clay_brick', count: 1 }] }),
+   249→  roof_tile: cube('roof_tile', TILES.ROOF_TILE, '#8c3c28', { tool: 'pickaxe', minToolTier: 1, hardness: 1.6, drops: [{ item: 'roof_tile', count: 1 }] }),
+   250→  tile_roof_red: cube('tile_roof_red', TILES.TILE_ROOF_RED, '#8c3c28', { tool: 'pickaxe', minToolTier: 1, hardness: 1.6, drops: [{ item: 'tile_roof_red', count: 1 }] }),
+   251→  tile_roof_blue: cube('tile_roof_blue', TILES.TILE_ROOF_BLUE, '#32508c', { tool: 'pickaxe', minToolTier: 1, hardness: 1.6, drops: [{ item: 'tile_roof_blue', count: 1 }] }),
+   252→  tile_roof_green: cube('tile_roof_green', TILES.TILE_ROOF_GREEN, '#32823c', { tool: 'pickaxe', minToolTier: 1, hardness: 1.6, drops: [{ item: 'tile_roof_green', count: 1 }] }),
+   253→  tile_roof_gray: cube('tile_roof_gray', TILES.TILE_ROOF_GRAY, '#6e6e6e', { tool: 'pickaxe', minToolTier: 1, hardness: 1.6, drops: [{ item: 'tile_roof_gray', count: 1 }] }),
+   254→  planks_dark: cube('planks_dark', TILES.WOOD_PLANK_DARK, '#644123', { tool: 'axe', hardness: 1.2, drops: [{ item: 'planks_dark', count: 1 }] }),
+   255→  wood_beam: cube('wood_beam', TILES.WOOD_BEAM, '#78502d', { tool: 'axe', hardness: 1.5, drops: [{ item: 'wood_beam', count: 1 }] }),
+   256→  thatch: cube('thatch', TILES.THATCH, '#b49646', { tool: 'axe', hardness: 0.6, drops: [{ item: 'thatch', count: 1 }] }),
+   257→  straw_bale: cube('straw_bale', TILES.STRAW_BALE, '#dcbe64', { tool: 'axe', hardness: 0.5, drops: [{ item: 'straw_bale', count: 1 }] }),
+   258→
+   259→  // === Workstations ===
+   260→  workbench: { id: 'workbench', name: 'Stół Warsztatowy', color: '#b5894d', sideColor: '#a47a44', bottomColor: '#a47a44', tiles: { top: TILES.WORKBENCH_TOP, side: TILES.WORKBENCH_FRONT, bottom: TILES.WORKBENCH_SIDE }, solid: true, breakable: true, tool: 'axe', hardness: 1.2, drops: [{ item: 'workbench', count: 1 }] },
+   261→  furnace: { id: 'furnace', name: 'Piec Hutniczy', color: '#8a8a8a', sideColor: '#787878', bottomColor: '#787878', tiles: { top: TILES.FURNACE_TOP, side: TILES.FURNACE_FRONT, bottom: TILES.FURNACE_SIDE }, solid: true, breakable: true, tool: 'pickaxe', minToolTier: 1, hardness: 2.5, drops: [{ item: 'furnace', count: 1 }] },
+   262→  anvil: { id: 'anvil', name: 'Kowadło', color: '#46464b', sideColor: '#3c3c41', bottomColor: '#3c3c41', tiles: { top: TILES.ANVIL_TOP, side: TILES.ANVIL_SIDE, bottom: TILES.ANVIL_SIDE }, solid: true, breakable: true, tool: 'pickaxe', minToolTier: 2, hardness: 3.5, drops: [{ item: 'anvil', count: 1 }] },
+   263→  forge: { id: 'forge', name: 'Kuźnia', color: '#787878', sideColor: '#646464', bottomColor: '#646464', tiles: { top: TILES.FURNACE_TOP, side: TILES.FORGE_FRONT, bottom: TILES.FURNACE_SIDE }, solid: true, breakable: true, tool: 'pickaxe', minToolTier: 2, hardness: 3.0, light: 8, drops: [{ item: 'forge', count: 1 }] },
+   264→  chest: { id: 'chest', name: 'Skrzynia', color: '#a47a44', sideColor: '#8c6638', bottomColor: '#8c6638', tiles: { top: TILES.CHEST_TOP, side: TILES.CHEST_FRONT, bottom: TILES.CHEST_SIDE }, solid: true, breakable: true, tool: 'axe', hardness: 1.2, drops: [{ item: 'chest', count: 1 }] },
+   265→  bookshelf: cube('bookshelf', TILES.BOOKSHELF, '#a47a44', { tool: 'axe', hardness: 1.2, drops: [{ item: 'bookshelf', count: 1 }] }),
+   266→  crate: cube('crate', TILES.CRATE, '#966e3c', { tool: 'axe', hardness: 1.0, drops: [{ item: 'crate', count: 1 }] }),
+   267→  barrel: cube('barrel', TILES.BARREL, '#8c5f32', { tool: 'axe', hardness: 1.0, drops: [{ item: 'barrel', count: 1 }] }),
+   268→  loom: cube('loom', TILES.LOOM, '#966e3c', { tool: 'axe', hardness: 1.0, drops: [{ item: 'loom', count: 1 }] }),
+   269→
+   270→  // === Metal blocks ===
+   271→  copper_block: cube('copper_block', TILES.COPPER_BLOCK, '#c97b4a', { tool: 'pickaxe', minToolTier: 2, hardness: 2.5, drops: [{ item: 'copper_block', count: 1 }] }),
+   272→  bronze_block: cube('bronze_block', TILES.BRONZE_BLOCK, '#b4823c', { tool: 'pickaxe', minToolTier: 3, hardness: 3.0, drops: [{ item: 'bronze_block', count: 1 }] }),
+   273→  iron_block: cube('iron_block', TILES.IRON_BLOCK, '#c8c8d2', { tool: 'pickaxe', minToolTier: 3, hardness: 3.5, drops: [{ item: 'iron_block', count: 1 }] }),
+   274→  steel_block: cube('steel_block', TILES.STEEL_BLOCK, '#96a0aa', { tool: 'pickaxe', minToolTier: 4, hardness: 4.0, drops: [{ item: 'steel_block', count: 1 }] }),
+   275→  gold_block: cube('gold_block', TILES.GOLD_BLOCK, '#f7d046', { tool: 'pickaxe', minToolTier: 4, hardness: 3.0, drops: [{ item: 'gold_block', count: 1 }] }),
+   276→  silver_block: cube('silver_block', TILES.SILVER_BLOCK, '#dcdce6', { tool: 'pickaxe', minToolTier: 3, hardness: 3.0, drops: [{ item: 'silver_block', count: 1 }] }),
+   277→  mithril_block: cube('mithril_block', TILES.MITHRIL_BLOCK, '#78c8dc', { tool: 'pickaxe', minToolTier: 5, hardness: 4.5, drops: [{ item: 'mithril_block', count: 1 }] }),
+   278→  charcoal_block: cube('charcoal_block', TILES.CHARCOAL_BLOCK, '#28232c', { tool: 'pickaxe', minToolTier: 1, hardness: 1.5, drops: [{ item: 'charcoal_block', count: 1 }] }),
+   279→  coal_block: cube('coal_block', TILES.COAL_BLOCK, '#1a1a1a', { tool: 'pickaxe', minToolTier: 1, hardness: 1.8, drops: [{ item: 'coal_block', count: 1 }] }),
+   280→
+   281→  // === Crops & food ===
+   282→  wheat: crossPlant('wheat', TILES.WHEAT, '#dcb450', 0.1),
+   283→  wheat_grown: crossPlant('wheat_grown', TILES.WHEAT_GROWN, '#dcb450', 0.1),
+   284→  carrot: crossPlant('carrot', TILES.CARROT, '#f08c32', 0.1),
+   285→  potato: crossPlant('potato', TILES.POTATO, '#b48c5a', 0.1),
+   286→  beetroot: crossPlant('beetroot', TILES.BEETROOT, '#96283c', 0.1),
+   287→  melon: cube('melon', TILES.MELON, '#508c32', { tool: 'axe', hardness: 0.8, drops: [{ item: 'melon', count: 1 }] }),
+   288→  bread: cube('bread', TILES.BREAD, '#c89650', { tool: 'hand', hardness: 0.2, drops: [{ item: 'bread', count: 1 }] }),
+   289→  cheese: cube('cheese', TILES.CHEESE, '#f0dc82', { tool: 'hand', hardness: 0.3, drops: [{ item: 'cheese', count: 1 }] }),
+   290→  honey_block: cube('honey_block', TILES.HONEY_BLOCK, '#f0c850', { tool: 'hand', hardness: 0.3, drops: [{ item: 'honey_block', count: 1 }] }),
+   291→  hay: cube('hay', TILES.HAY, '#dcbe64', { tool: 'axe', hardness: 0.5, drops: [{ item: 'hay', count: 1 }] }),
+   292→
+   293→  // === Decoration ===
+   294→  carpet_red: cube('carpet_red', TILES.CARPET_RED, '#a02828', { tool: 'hand', hardness: 0.1, drops: [{ item: 'carpet_red', count: 1 }] }),
+   295→  carpet_blue: cube('carpet_blue', TILES.CARPET_BLUE, '#283ca0', { tool: 'hand', hardness: 0.1, drops: [{ item: 'carpet_blue', count: 1 }] }),
+   296→  carpet_green: cube('carpet_green', TILES.CARPET_GREEN, '#28823c', { tool: 'hand', hardness: 0.1, drops: [{ item: 'carpet_green', count: 1 }] }),
+   297→  curtain: cube('curtain', TILES.CURTAIN, '#8c2828', { tool: 'hand', hardness: 0.1, drops: [{ item: 'curtain', count: 1 }], transparent: true }),
+   298→  window: cube('window', TILES.WINDOW, '#cae3f5', { tool: 'hand', hardness: 0.3, drops: [{ item: 'window', count: 1 }], transparent: true }),
+   299→  door_wood: cube('door_wood', TILES.DOOR_WOOD, '#78502d', { tool: 'axe', hardness: 0.8, drops: [{ item: 'door_wood', count: 1 }] }),
+   300→  door_iron: cube('door_iron', TILES.DOOR_IRON, '#64646e', { tool: 'pickaxe', minToolTier: 2, hardness: 2.5, drops: [{ item: 'door_iron', count: 1 }] }),
+   301→  ladder: { id: 'ladder', name: 'Drabina', color: '#78502d', tiles: { all: TILES.LADDER }, solid: false, breakable: true, tool: 'axe', hardness: 0.3, transparent: true, variant: 'cross', drops: [{ item: 'ladder', count: 1 }] },
+   302→  fence_wood: cube('fence_wood', TILES.FENCE_WOOD, '#966e3c', { tool: 'axe', hardness: 0.8, drops: [{ item: 'fence_wood', count: 1 }] }),
+   303→  fence_stone: cube('fence_stone', TILES.FENCE_STONE, '#6e6e6e', { tool: 'pickaxe', minToolTier: 1, hardness: 1.8, drops: [{ item: 'fence_stone', count: 1 }] }),
+   304→  sign: cube('sign', TILES.SIGN, '#b48c50', { tool: 'axe', hardness: 0.6, drops: [{ item: 'sign', count: 1 }] }),
+   305→  banner: cube('banner', TILES.BANNER, '#8c1e28', { tool: 'hand', hardness: 0.3, drops: [{ item: 'banner', count: 1 }], transparent: true }),
+   306→  column_top: cube('column_top', TILES.COLUMN_TOP, '#dcdcd7', { tool: 'pickaxe', minToolTier: 1, hardness: 1.5, drops: [{ item: 'column_top', count: 1 }] }),
+   307→  column_mid: cube('column_mid', TILES.COLUMN_MID, '#dcdcd7', { tool: 'pickaxe', minToolTier: 1, hardness: 1.5, drops: [{ item: 'column_mid', count: 1 }] }),
+   308→  column_base: cube('column_base', TILES.COLUMN_BASE, '#c8c8c3', { tool: 'pickaxe', minToolTier: 1, hardness: 1.5, drops: [{ item: 'column_base', count: 1 }] }),
+   309→  shutter: cube('shutter', TILES.SHUTTER, '#784628', { tool: 'axe', hardness: 0.6, drops: [{ item: 'shutter', count: 1 }] }),
+   310→};
+   311→
+   312→// Alias for backward-compatibility with old code that uses 'wood', 'planks', 'leaves'
+   313→// We don't include these as BlockType union members anymore, but provide a small compat layer:
+   314→export const BLOCK_ALIASES: Record<string, BlockType> = {
+   315→  wood: 'wood_oak',
+   316→  planks: 'planks_oak',
+   317→  leaves: 'leaves_oak',
+   318→  coal: 'coal_block',
+   319→  copper: 'copper_ore',
+   320→  iron: 'iron_ore',
+   321→  gold: 'gold_ore',
+   322→  diamond: 'diamond_ore',
+   323→  ice: 'ice',
+   324→};
+   325→
+   326→// Hotbar / palette order — most useful blocks first
+   327→export const BLOCK_TYPES_ORDER: BlockType[] = [
+   328→  // Building essentials
+   329→  'grass', 'dirt', 'stone', 'cobblestone', 'sand', 'gravel', 'clay',
+   330→  'wood_oak', 'planks_oak', 'leaves_oak',
+   331→  'wood_pine', 'planks_pine', 'leaves_pine',
+   332→  'wood_spruce', 'planks_spruce', 'leaves_spruce',
+   333→  'wood_birch', 'planks_birch', 'leaves_birch',
+   334→  // Autumn leaves
+   335→  'leaves_autumn_yellow', 'leaves_autumn_orange', 'leaves_autumn_red', 'leaves_autumn_mixed',
+   336→  // Plants
+   337→  'bush', 'bush_berry', 'fern', 'tall_grass', 'reed', 'lavender', 'dead_bush',
+   338→  'flower_red', 'flower_yellow', 'flower_white', 'flower_purple', 'flower_blue',
+   339→  'mushroom_brown', 'mushroom_red',
+   340→  'cactus', 'pumpkin', 'pinecone',
+   341→  // Crafting stations
+   342→  'workbench', 'furnace', 'anvil', 'forge', 'chest', 'bookshelf', 'crate', 'barrel',
+   343→  // Crafted blocks
+   344→  'glass', 'brick', 'stone_brick', 'sandstone_brick', 'cobble_wall', 'roof_tile',
+   345→  'tile_roof_red', 'tile_roof_blue', 'tile_roof_green', 'tile_roof_gray',
+   346→  // Light
+   347→  'torch', 'lantern', 'pumpkin_carved',
+   348→  // Ores
+   349→  'coal_ore', 'copper_ore', 'iron_ore', 'gold_ore', 'diamond_ore', 'sulfur_ore', 'mithril_ore', 'tin_ore', 'zinc_ore', 'salt_ore',
+   350→  // Metals
+   351→  'copper_block', 'bronze_block', 'iron_block', 'steel_block', 'gold_block', 'silver_block', 'mithril_block', 'coal_block',
+   352→  // Decor
+   353→  'carpet_red', 'carpet_blue', 'carpet_green', 'curtain', 'window', 'door_wood', 'door_iron',
+   354→  'ladder', 'fence_wood', 'fence_stone', 'sign', 'banner',
+   355→  'column_top', 'column_mid', 'column_base', 'shutter',
+   356→  // Special
+   357→  'crystal_blue', 'crystal_purple', 'crystal_green', 'geode',
+   358→  'stained_red', 'stained_blue', 'stained_green', 'stained_yellow',
+   359→  // Food
+   360→  'wheat', 'bread', 'cheese', 'honey_block', 'hay',
+   361→  // Terrain extras
+   362→  'granite', 'marble', 'slate', 'mossy_stone', 'mossy_cobble', 'cracked_stone',
+   363→  'red_sand', 'sandstone', 'terracotta', 'obsidian',
+   364→  'snow', 'ice', 'ice_packed', 'ice_blue',
+   365→  'mud', 'ash', 'scorched', 'slag', 'magma',
+   366→  'boulder', 'stalagmite', 'rock_moss', 'pebbles',
+   367→];
+   368→
+   369→export interface ToolDef {
+   370→  id: string;
+   371→  name: string;
+   372→  type: 'pickaxe' | 'axe' | 'shovel' | 'sword' | 'hand';
+   373→  tier: number; // 0=hand, 1=flint, 2=stone, 3=copper, 4=iron, 5=diamond
+   374→  durability: number;
+   375→  miningSpeed: number; // multiplier
+   376→  attackDamage: number;
+   377→  emoji: string;
+   378→}
+   379→
+   380→export const TOOLS: ToolDef[] = [
+   381→  { id: 'hand', name: 'Goła Ręka', type: 'hand', tier: 0, durability: Infinity, miningSpeed: 1, attackDamage: 1, emoji: '✋' },
+   382→  { id: 'flint_pickaxe', name: 'Krzemienne Dłuto', type: 'pickaxe', tier: 1, durability: 60, miningSpeed: 2, attackDamage: 2, emoji: '⛏️' },
+   383→  { id: 'flint_axe', name: 'Krzemienne Dłuto Drwala', type: 'axe', tier: 1, durability: 60, miningSpeed: 2, attackDamage: 3, emoji: '🪓' },
+   384→  { id: 'flint_shovel', name: 'Krzemienna Łopata', type: 'shovel', tier: 1, durability: 60, miningSpeed: 2, attackDamage: 1, emoji: '🥄' },
+   385→  { id: 'flint_sword', name: 'Krzemienne Ostrze', type: 'sword', tier: 1, durability: 80, miningSpeed: 1, attackDamage: 4, emoji: '🗡️' },
+   386→  { id: 'stone_pickaxe', name: 'Kamienny Kilof', type: 'pickaxe', tier: 2, durability: 130, miningSpeed: 4, attackDamage: 3, emoji: '⛏️' },
+   387→  { id: 'stone_axe', name: 'Kamienna Siekiera', type: 'axe', tier: 2, durability: 130, miningSpeed: 4, attackDamage: 4, emoji: '🪓' },
+   388→  { id: 'stone_sword', name: 'Kamienny Miecz', type: 'sword', tier: 2, durability: 180, miningSpeed: 1, attackDamage: 5, emoji: '🗡️' },
+   389→  { id: 'copper_pickaxe', name: 'Miedziany Kilof', type: 'pickaxe', tier: 3, durability: 220, miningSpeed: 6, attackDamage: 4, emoji: '⛏️' },
+   390→  { id: 'copper_sword', name: 'Miedziany Miecz', type: 'sword', tier: 3, durability: 280, miningSpeed: 1, attackDamage: 7, emoji: '🗡️' },
+   391→  { id: 'iron_pickaxe', name: 'Żelazny Kilof', type: 'pickaxe', tier: 4, durability: 480, miningSpeed: 9, attackDamage: 6, emoji: '⛏️' },
+   392→  { id: 'iron_sword', name: 'Żelazny Miecz', type: 'sword', tier: 4, durability: 600, miningSpeed: 1, attackDamage: 9, emoji: '🗡️' },
+   393→];
+   394→
+   395→export const RECIPES: CraftingRecipe[] = [
+   396→  // Basic building
+   397→  {
+   398→    id: 'planks_oak',
+   399→    name: 'Deski Dębowe',
+   400→    output: { block: 'planks_oak', count: 4 },
+   401→    ingredients: [{ block: 'wood_oak', count: 1 }],
+   402→    description: 'Podstawowy materiał budowlany.',
+   403→    category: 'building',
+   404→  },
+   405→  {
+   406→    id: 'planks_pine',
+   407→    name: 'Deski Sosnowe',
+   408→    output: { block: 'planks_pine', count: 4 },
+   409→    ingredients: [{ block: 'wood_pine', count: 1 }],
+   410→    description: 'Ciemne deski z sosny.',
+   411→    category: 'building',
+   412→  },
+   413→  {
+   414→    id: 'planks_spruce',
+   415→    name: 'Deski Świerkowe',
+   416→    output: { block: 'planks_spruce', count: 4 },
+   417→    ingredients: [{ block: 'wood_spruce', count: 1 }],
+   418→    description: 'Deski z świerku.',
+   419→    category: 'building',
+   420→  },
+   421→  {
+   422→    id: 'planks_birch',
+   423→    name: 'Deski Brzozowe',
+   424→    output: { block: 'planks_birch', count: 4 },
+   425→    ingredients: [{ block: 'wood_birch', count: 1 }],
+   426→    description: 'Jasne deski z brzozy.',
+   427→    category: 'building',
+   428→  },
+   429→  {
+   430→    id: 'cobblestone',
+   431→    name: 'Bruk z Kamienia',
+   432→    output: { block: 'cobblestone', count: 1 },
+   433→    ingredients: [{ block: 'stone', count: 1 }],
+   434→    description: 'Wzmocniony kamień do budowy.',
+   435→    category: 'building',
+   436→  },
+   437→  {
+   438→    id: 'glass',
+   439→    name: 'Szkło',
+   440→    output: { block: 'glass', count: 1 },
+   441→    ingredients: [{ block: 'sand', count: 1 }, { block: 'coal_block', count: 1 }],
+   442→    requiresStation: 'smeltery',
+   443→    description: 'Przezroczysty blok. Wymaga pieca.',
+   444→    category: 'smelting',
+   445→  },
+   446→  {
+   447→    id: 'torch',
+   448→    name: 'Pochodnia',
+   449→    output: { block: 'torch', count: 4 },
+   450→    ingredients: [{ block: 'wood_oak', count: 1 }, { block: 'coal_block', count: 1 }],
+   451→    description: 'Oświetla drogę w nocy i w jaskiniach.',
+   452→    category: 'tools',
+   453→  },
+   454→  {
+   455→    id: 'lantern',
+   456→    name: 'Latarenka',
+   457→    output: { block: 'lantern', count: 1 },
+   458→    ingredients: [{ block: 'iron_block', count: 1 }, { block: 'torch', count: 1 }],
+   459→    requiresStation: 'workbench',
+   460→    description: 'Silne, przenośne źródło światła.',
+   461→    category: 'tools',
+   462→  },
+   463→  {
+   464→    id: 'brick',
+   465→    name: 'Cegły',
+   466→    output: { block: 'brick', count: 4 },
+   467→    ingredients: [{ block: 'clay', count: 2 }, { block: 'coal_block', count: 1 }],
+   468→    requiresStation: 'smeltery',
+   469→    description: 'Trwały materiał budowlany. Wymaga wypalenia w piecu.',
+   470→    category: 'smelting',
+   471→  },
+   472→  {
+   473→    id: 'stone_brick',
+   474→    name: 'Kamienne Cegły',
+   475→    output: { block: 'stone_brick', count: 4 },
+   476→    ingredients: [{ block: 'cobblestone', count: 4 }],
+   477→    requiresStation: 'workbench',
+   478→    description: 'Równy kamień do budowli.',
+   479→    category: 'building',
+   480→  },
+   481→  {
+   482→    id: 'workbench',
+   483→    name: 'Stół Warsztatowy',
+   484→    output: { block: 'workbench', count: 1 },
+   485→    ingredients: [{ block: 'planks_oak', count: 4 }],
+   486→    description: 'Niezbędny do tworzenia narzędzi i mebli.',
+   487→    category: 'building',
+   488→  },
+   489→  {
+   490→    id: 'furnace',
+   491→    name: 'Piec Hutniczy',
+   492→    output: { block: 'furnace', count: 1 },
+   493→    ingredients: [{ block: 'cobblestone', count: 8 }],
+   494→    description: 'Pozwala wytapiać metale i szkło.',
+   495→    category: 'building',
+   496→  },
+   497→  {
+   498→    id: 'anvil',
+   499→    name: 'Kowadło',
+   500→    output: { block: 'anvil', count: 1 },
+   501→    ingredients: [{ block: 'iron_block', count: 5 }],
+   502→    requiresStation: 'smeltery',
+   503→    description: 'Do kucia narzędzi i broni.',
+   504→    category: 'building',
+   505→  },
+   506→  {
+   507→    id: 'chest',
+   508→    name: 'Skrzynia',
+   509→    output: { block: 'chest', count: 1 },
+   510→    ingredients: [{ block: 'planks_oak', count: 8 }],
+   511→    description: 'Przechowuj swoje skarby.',
+   512→    category: 'building',
+   513→  },
+   514→  {
+   515→    id: 'bookshelf',
+   516→    name: 'Biblioteczka',
+   517→    output: { block: 'bookshelf', count: 1 },
+   518→    ingredients: [{ block: 'planks_oak', count: 6 }],
+   519→    description: 'Dla domowej biblioteki.',
+   520→    category: 'decor',
+   521→  },
+   522→  {
+   523→    id: 'flint_pickaxe',
+   524→    name: 'Krzemienne Dłuto',
+   525→    output: { block: 'cobblestone', count: 1 },
+   526→    ingredients: [{ block: 'cobblestone', count: 3 }, { block: 'planks_oak', count: 2 }],
+   527→    description: 'Narzędzie do wydobywania kamienia i rud.',
+   528→    category: 'tools',
+   529→  },
+   530→  {
+   531→    id: 'smeltery_setup',
+   532→    name: 'Podstawowa Hut',
+   533→    output: { block: 'furnace', count: 1 },
+   534→    ingredients: [{ block: 'cobblestone', count: 8 }, { block: 'coal_block', count: 1 }],
+   535→    description: 'Wymagana do wytapiania metali.',
+   536→    category: 'smelting',
+   537→  },
+   538→];
+   539→
+   540→export const QUESTS: Quest[] = [
+   541→  {
+   542→    id: 'first_steps',
+   543→    title: 'Pierwsze Kroki',
+   544→    description: 'Zbierz surowce, aby przetrwać w dziczy.',
+   545→    objectives: [
+   546→      { id: 'wood', description: 'Zbierz drewno z drzew', target: { block: 'wood_oak', count: 10 }, progress: 0, completed: false },
+   547→      { id: 'stone', description: 'Wykop kamień z ziemi', target: { block: 'cobblestone', count: 20 }, progress: 0, completed: false },
+   548→      { id: 'food', description: 'Znajdź jedzenie (grzyby/kwiaty)', target: { block: 'mushroom_brown', count: 5 }, progress: 0, completed: false },
+   549→    ],
+   550→  },
+   551→  {
+   552→    id: 'metalworking',
+   553→    title: 'Metalurgia',
+   554→    description: 'Odkryj sekrety obróbki metalu.',
+   555→    objectives: [
+   556→      { id: 'copper', description: 'Wykop rudę miedzi z jaskiń', target: { block: 'copper_ore', count: 10 }, progress: 0, completed: false },
+   557→      { id: 'coal', description: 'Znajdź węgiel kamienny', target: { block: 'coal_block', count: 15 }, progress: 0, completed: false },
+   558→      { id: 'iron', description: 'Wykop rudę żelaza (głęboko)', target: { block: 'iron_ore', count: 5 }, progress: 0, completed: false },
+   559→    ],
+   560→  },
+   561→  {
+   562→    id: 'builder',
+   563→    title: 'Budowniczy',
+   564→    description: 'Stawiaj struktury i ozdabiaj świat.',
+   565→    objectives: [
+   566→      { id: 'planks', description: 'Wytwórz deski', target: { block: 'planks_oak', count: 30 }, progress: 0, completed: false },
+   567→      { id: 'glass', description: 'Wytop szkło w hucie', target: { block: 'glass', count: 5 }, progress: 0, completed: false },
+   568→      { id: 'torch', description: 'Stwórz pochodnie na noc', target: { block: 'torch', count: 10 }, progress: 0, completed: false },
+   569→    ],
+   570→  },
+   571→];
+   572→
+   573→// Noise-based terrain config
+   574→export const WORLD_CONFIG = {
+   575→  CHUNK_SIZE: 16,
+   576→  WORLD_HEIGHT: 64,
+   577→  SEA_LEVEL: 24,
+   578→  RENDER_DISTANCE: 3, // chunks in each direction (7x7 = 49 chunks total)
+   579→  GRAVITY: -28,
+   580→  JUMP_VELOCITY: 9.2,
+   581→  WALK_SPEED: 4.6,
+   582→  SPRINT_SPEED: 7.5,
+   583→  FLY_SPEED: 12,
+   584→  PLAYER_HEIGHT: 1.8,
+   585→  PLAYER_WIDTH: 0.6,
+   586→  REACH: 5,
+   587→};
+   588→

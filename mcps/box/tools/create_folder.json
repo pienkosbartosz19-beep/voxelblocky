@@ -1,0 +1,25 @@
+{
+  "name": "create_folder",
+  "description": "Creates new folders in Box.\n\n<examples>\nCreate folder in root:\n<input>\n{\n  \"name\": \"Project Documents\"\n}\n</input>\n\nCreate folder in specific parent:\n<input>\n{\n  \"name\": \"Q4 Reports\",\n  \"parent_folder_id\": \"123456789\"\n}\n</input>\n</examples>",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 255,
+        "description": "Folder name (max 255 chars, no slashes, leading/trailing spaces, or dots). Must be unique within parent folder."
+      },
+      "parent_folder_id": {
+        "type": "string",
+        "default": "0",
+        "description": "Parent folder ID where new folder will be created. Defaults to \"0\" (root directory)."
+      }
+    },
+    "required": [
+      "name"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

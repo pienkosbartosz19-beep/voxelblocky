@@ -1,0 +1,26 @@
+{
+  "name": "get_folder_details",
+  "description": "Retrieves comprehensive information about a folder in Box. Returns essential fields by default (id, name, createdBy, modifiedBy, createdAt, modifiedAt). Use 'fields' parameter to request additional properties.\n\n**Common useful fields:** size, description, tags, metadata, permissions, shared_link, parent, path_collection, folder_upload_email, has_collaborations, allowed_invitee_roles, can_non_owners_invite, can_non_owners_view_collaborators, is_collaboration_restricted_to_enterprise, classification, allowed_shared_link_access_levels, content_created_at, content_modified_at, item_status, sync_state, watermark_info, trashed_at.\n\n**Note:** Only request 'item_collection' when the user explicitly asks for folder contents. Use 'list_folder_content_by_folder_id' for browsing folder items instead.\n\n<examples>\nBasic folder info:\n<input>{\"folder_id\": \"123456789\"}</input>\n\nFolder with permissions and collaboration settings:\n<input>\n{\n  \"folder_id\": \"987654321\",\n  \"fields\": [\"id\", \"name\", \"size\", \"permissions\", \"can_non_owners_invite\", \"has_collaborations\"]\n}\n</input>\n\nDetailed folder analysis with settings:\n<input>\n{\n  \"folder_id\": \"555666777\",\n  \"fields\": [\"id\", \"name\", \"description\", \"path_collection\", \"folder_upload_email\", \"allowed_invitee_roles\", \"classification\", \"shared_link\", \"tags\"]\n}\n</input>\n</examples>",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "folder_id": {
+        "type": "string",
+        "pattern": "^\\d+$",
+        "description": "The unique identifier of the folder"
+      },
+      "fields": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Specific fields to retrieve. If not specified, returns essential fields. Use to request additional metadata, permissions, etc."
+      }
+    },
+    "required": [
+      "folder_id"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

@@ -1,0 +1,665 @@
+     1→'use client';
+     2→
+     3→import { BlockIcon } from './BlockIcon';
+     4→import type { GameUIState } from '@/hooks/use-game';
+     5→import { BLOCKS, RECIPES } from '@/game/blocks';
+     6→import type { BlockType } from '@/game/types';
+     7→import { useState, useEffect } from 'react';
+     8→
+     9→interface HUDProps {
+    10→  state: GameUIState;
+    11→  onRespawn: () => void;
+    12→  onStart: () => void;
+    13→  onSetHotbar: (slot: number, block: BlockType | null) => void;
+    14→  onMoveToHotbar: (invIndex: number, hotbarSlot: number) => void;
+    15→  onCraft: (recipeId: string, recipes: any[]) => boolean | void;
+    16→  onGiveItem: (block: BlockType, count: number) => void;
+    17→}
+    18→
+    19→export function GameHUD({ state, onRespawn, onStart, onSetHotbar, onMoveToHotbar, onCraft, onGiveItem }: HUDProps) {
+    20→  const [showInventory, setShowInventory] = useState(false);
+    21→  const [showCrafting, setShowCrafting] = useState(false);
+    22→  const [showQuests, setShowQuests] = useState(false);
+    23→  const [showHelp, setShowHelp] = useState(false);
+    24→  const [draggedBlock, setDraggedBlock] = useState<BlockType | null>(null);
+    25→
+    26→  // Use key 'E' handled outside via keyboard - we'll listen here too
+    27→  // Use key 'Tab' for quests
+    28→  useEffectForKeyboard(setShowInventory, setShowCrafting, setShowQuests, setShowHelp);
+    29→
+    30→  const isDay = state.isDay;
+    31→  const skyTime = state.time;
+    32→  const hour = Math.floor(((skyTime * 24) + 6) % 24); // offset so 0 = 6am
+    33→  const minute = Math.floor((((skyTime * 24) + 6) % 1) * 60);
+    34→  const timeStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+    35→
+    36→  return (
+    37→    <>
+    38→      {/* Top-left HUD: health/hunger/stamina */}
+    39→      <div className="absolute top-4 left-4 z-20 select-none pointer-events-none">
+    40→        <div className="flex flex-col gap-1.5">
+    41→          {/* Health (hearts) */}
+    42→          <div className="flex items-center gap-1">
+    43→            <span className="text-red-400 text-xs mr-1" style={{ textShadow: '1px 1px 0 #000' }}>❤</span>
+    44→            {Array.from({ length: 10 }).map((_, i) => {
+    45→              const filled = i < Math.floor(state.health);
+    46→              const half = !filled && i < state.health;
+    47→              return (
+    48→                <div
+    49→                  key={i}
+    50→                  className="w-3 h-3 rounded-sm"
+    51→                  style={{
+    52→                    background: filled ? '#dc2626' : half ? '#dc262680' : '#3a2020',
+    53→                    border: '1px solid #1a0808',
+    54→                    boxShadow: filled ? '0 0 3px #dc262680' : 'none',
+    55→                  }}
+    56→                />
+    57→              );
+    58→            })}
+    59→          </div>
+    60→          {/* Hunger (drumsticks) */}
+    61→          <div className="flex items-center gap-1">
+    62→            <span className="text-amber-500 text-xs mr-1" style={{ textShadow: '1px 1px 0 #000' }}>🍗</span>
+    63→            {Array.from({ length: 10 }).map((_, i) => (
+    64→              <div
+    65→                key={i}
+    66→                className="w-3 h-3 rounded-sm"
+    67→                style={{
+    68→                  background: i < Math.floor(state.hunger) ? '#d97706' : '#3a2a08',
+    69→                  border: '1px solid #1a1404',
+    70→                }}
+    71→              />
+    72→            ))}
+    73→          </div>
+    74→          {/* Stamina */}
+    75→          <div className="flex items-center gap-1">
+    76→            <span className="text-emerald-400 text-xs mr-1" style={{ textShadow: '1px 1px 0 #000' }}>⚡</span>
+    77→            <div
+    78→              className="w-32 h-2 rounded-full overflow-hidden"
+    79→              style={{ background: '#0a1a0a', border: '1px solid #051a05' }}
+    80→            >
+    81→              <div
+    82→                className="h-full transition-all duration-200"
+    83→                style={{
+    84→                  width: `${(state.stamina / state.maxStamina) * 100}%`,
+    85→                  background: 'linear-gradient(90deg, #059669, #34d399)',
+    86→                }}
+    87→              />
+    88→            </div>
+    89→          </div>
+    90→        </div>
+    91→      </div>
+    92→
+    93→      {/* Top-center: clock + biome */}
+    94→      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 select-none pointer-events-none">
+    95→        <div
+    96→          className="px-3 py-1.5 rounded-md flex items-center gap-3"
+    97→          style={{
+    98→            background: 'rgba(15, 20, 30, 0.7)',
+    99→            border: '1px solid rgba(255,255,255,0.15)',
+   100→            backdropFilter: 'blur(8px)',
+   101→          }}
+   102→        >
+   103→          <span className="text-lg">{isDay ? '☀️' : '🌙'}</span>
+   104→          <span className="text-white font-mono text-sm font-bold">{timeStr}</span>
+   105→          <span className="text-white/40">|</span>
+   106→          <span className="text-emerald-300 text-xs">{state.biome}</span>
+   107→        </div>
+   108→      </div>
+   109→
+   110→      {/* Top-right: Quest tracker (mini) */}
+   111→      <div className="absolute top-4 right-4 z-20 select-none">
+   112→        <div
+   113→          className="rounded-md p-3 max-w-xs"
+   114→          style={{
+   115→            background: 'rgba(15, 20, 30, 0.75)',
+   116→            border: '1px solid rgba(255,255,255,0.15)',
+   117→            backdropFilter: 'blur(8px)',
+   118→          }}
+   119→        >
+   120→          <div className="flex items-center justify-between gap-3 mb-1.5">
+   121→            <span className="text-amber-300 font-bold text-sm">📜 Questy</span>
+   122→            <button
+   123→              onClick={() => setShowQuests(true)}
+   124→              className="text-xs text-white/60 hover:text-white pointer-events-auto"
+   125→            >
+   126→              [pokaż]
+   127→            </button>
+   128→          </div>
+   129→          {state.quests.slice(0, 1).map(q => (
+   130→            <div key={q.id}>
+   131→              <div className="text-white font-semibold text-xs mb-1">{q.title}</div>
+   132→              {q.objectives.slice(0, 2).map(o => (
+   133→                <div key={o.id} className="flex items-center justify-between gap-2 text-[11px] mb-0.5">
+   134→                  <span className={o.completed ? 'text-emerald-300 line-through' : 'text-white/80'}>
+   135→                    {o.completed ? '✓ ' : ''}{o.description}
+   136→                  </span>
+   137→                  <span className="text-white/50 font-mono">
+   138→                    {Math.min(o.progress, o.target.count)}/{o.target.count}
+   139→                  </span>
+   140→                </div>
+   141→              ))}
+   142→            </div>
+   143→          ))}
+   144→        </div>
+   145→      </div>
+   146→
+   147→      {/* Bottom-right: position info (FPS/draw-calls moved to PerformanceOverlay) */}
+   148→      <div className="absolute bottom-20 right-4 z-20 select-none pointer-events-none">
+   149→        <div className="text-[10px] text-white/40 text-right font-mono">
+   150→          <div>XYZ: {state.position.x.toFixed(1)}, {state.position.y.toFixed(1)}, {state.position.z.toFixed(1)}</div>
+   151→          <div>Biome: {state.biome}</div>
+   152→        </div>
+   153→      </div>
+   154→
+   155→      {/* Crosshair */}
+   156→      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none">
+   157→        <div className="relative w-5 h-5">
+   158→          <div className="absolute top-1/2 left-0 w-2 h-px bg-white/80 -translate-y-1/2" />
+   159→          <div className="absolute top-1/2 right-0 w-2 h-px bg-white/80 -translate-y-1/2" />
+   160→          <div className="absolute top-0 left-1/2 w-px h-2 bg-white/80 -translate-x-1/2" />
+   161→          <div className="absolute bottom-0 left-1/2 w-px h-2 bg-white/80 -translate-x-1/2" />
+   162→        </div>
+   163→      </div>
+   164→
+   165→      {/* Hotbar */}
+   166→      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 select-none">
+   167→        <div
+   168→          className="flex gap-1 p-1.5 rounded-lg"
+   169→          style={{
+   170→            background: 'rgba(15, 20, 30, 0.8)',
+   171→            border: '2px solid rgba(255,255,255,0.18)',
+   172→            backdropFilter: 'blur(8px)',
+   173→          }}
+   174→        >
+   175→          {state.hotbar.map((block, i) => (
+   176→            <div
+   177→              key={i}
+   178→              className="relative w-12 h-12 flex items-center justify-center rounded-md transition-all"
+   179→              style={{
+   180→                background: i === state.selectedSlot ? 'rgba(255, 220, 100, 0.25)' : 'rgba(40, 50, 60, 0.5)',
+   181→                border: i === state.selectedSlot ? '2px solid #fbbf24' : '2px solid rgba(255,255,255,0.08)',
+   182→                boxShadow: i === state.selectedSlot ? '0 0 12px rgba(251, 191, 36, 0.5)' : 'none',
+   183→              }}
+   184→            >
+   185→              {block && <BlockIcon block={block} size={32} />}
+   186→              <span className="absolute top-0 left-1 text-[9px] text-white/60 font-mono">{i + 1}</span>
+   187→              {block && state.inventory.find(it => it.block === block) && (
+   188→                <span className="absolute bottom-0 right-1 text-[10px] text-white font-mono font-bold" style={{ textShadow: '1px 1px 0 #000' }}>
+   189→                  {state.inventory.find(it => it.block === block)?.count}
+   190→                </span>
+   191→              )}
+   192→            </div>
+   193→          ))}
+   194→        </div>
+   195→        <div className="text-center text-[10px] text-white/60 mt-1 font-mono">
+   196→          [E] Ekwipunek · [Q] Crafting · [Tab] Questy · [H] Pomoc
+   197→        </div>
+   198→      </div>
+   199→
+   200→      {/* Selected item info */}
+   201→      {state.lookingAt && (
+   202→        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-20 select-none pointer-events-none">
+   203→          <div
+   204→            className="px-3 py-1 rounded-md text-xs text-white"
+   205→            style={{
+   206→              background: 'rgba(15, 20, 30, 0.7)',
+   207→              border: '1px solid rgba(255,255,255,0.15)',
+   208→              backdropFilter: 'blur(8px)',
+   209→            }}
+   210→          >
+   211→            🎯 {BLOCKS[state.lookingAt].name}
+   212→          </div>
+   213→        </div>
+   214→      )}
+   215→
+   216→      {/* Message toast */}
+   217→      {state.message && (
+   218→        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 z-30 select-none pointer-events-none">
+   219→          <div
+   220→            className="px-5 py-2.5 rounded-lg text-sm text-white font-semibold animate-pulse"
+   221→            style={{
+   222→              background: 'rgba(15, 20, 30, 0.92)',
+   223→              border: '1px solid rgba(255, 220, 100, 0.4)',
+   224→              boxShadow: '0 0 24px rgba(255, 220, 100, 0.2)',
+   225→              backdropFilter: 'blur(8px)',
+   226→            }}
+   227→          >
+   228→            {state.message}
+   229→          </div>
+   230→        </div>
+   231→      )}
+   232→
+   233→      {/* Pause overlay */}
+   234→      {state.paused && !state.dead && (
+   235→        <PauseOverlay
+   236→          onResume={onStart}
+   237→          onShowInventory={() => setShowInventory(true)}
+   238→          onShowCrafting={() => setShowCrafting(true)}
+   239→          onShowQuests={() => setShowQuests(true)}
+   240→          onShowHelp={() => setShowHelp(true)}
+   241→        />
+   242→      )}
+   243→
+   244→      {/* Death overlay */}
+   245→      {state.dead && (
+   246→        <div className="absolute inset-0 z-40 flex items-center justify-center" style={{ background: 'rgba(80, 0, 0, 0.6)', backdropFilter: 'blur(4px)' }}>
+   247→          <div className="text-center">
+   248→            <h2 className="text-6xl font-bold text-red-500 mb-4" style={{ textShadow: '0 0 20px rgba(220,38,38,0.8)' }}>ZGINĄŁEŚ</h2>
+   249→            <button
+   250→              onClick={onRespawn}
+   251→              className="px-8 py-3 bg-red-700 hover:bg-red-600 text-white rounded-md font-bold transition-colors"
+   252→            >
+   253→              Respawn
+   254→            </button>
+   255→          </div>
+   256→        </div>
+   257→      )}
+   258→
+   259→      {/* Inventory Modal */}
+   260→      {showInventory && (
+   261→        <InventoryModal
+   262→          state={state}
+   263→          onClose={() => setShowInventory(false)}
+   264→          onMoveToHotbar={onMoveToHotbar}
+   265→          onGiveItem={onGiveItem}
+   266→        />
+   267→      )}
+   268→
+   269→      {/* Crafting Modal */}
+   270→      {showCrafting && (
+   271→        <CraftingModal state={state} onClose={() => setShowCrafting(false)} onCraft={onCraft} />
+   272→      )}
+   273→
+   274→      {/* Quests Modal */}
+   275→      {showQuests && <QuestsModal state={state} onClose={() => setShowQuests(false)} />}
+   276→
+   277→      {/* Help Modal */}
+   278→      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
+   279→    </>
+   280→  );
+   281→}
+   282→
+   283→function useEffectForKeyboard(
+   284→  setShowInventory: (v: boolean) => void,
+   285→  setShowCrafting: (v: boolean) => void,
+   286→  setShowQuests: (v: boolean) => void,
+   287→  setShowHelp: (v: boolean) => void,
+   288→) {
+   289→  useEffect(() => {
+   290→    function onKey(e: KeyboardEvent) {
+   291→      if (e.code === 'KeyE') {
+   292→        e.preventDefault();
+   293→        setShowInventory(true);
+   294→      } else if (e.code === 'KeyQ') {
+   295→        e.preventDefault();
+   296→        setShowCrafting(true);
+   297→      } else if (e.code === 'Tab') {
+   298→        e.preventDefault();
+   299→        setShowQuests(true);
+   300→      } else if (e.code === 'KeyH') {
+   301→        e.preventDefault();
+   302→        setShowHelp(true);
+   303→      }
+   304→    }
+   305→    document.addEventListener('keydown', onKey);
+   306→    return () => document.removeEventListener('keydown', onKey);
+   307→  }, [setShowInventory, setShowCrafting, setShowQuests, setShowHelp]);
+   308→}
+   309→
+   310→function PauseOverlay({
+   311→  onResume,
+   312→  onShowInventory,
+   313→  onShowCrafting,
+   314→  onShowQuests,
+   315→  onShowHelp,
+   316→}: {
+   317→  onResume: () => void;
+   318→  onShowInventory: () => void;
+   319→  onShowCrafting: () => void;
+   320→  onShowQuests: () => void;
+   321→  onShowHelp: () => void;
+   322→}) {
+   323→  return (
+   324→    <div className="absolute inset-0 z-30 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)' }}>
+   325→      <div
+   326→        className="rounded-xl p-8 max-w-md w-full mx-4 text-center"
+   327→        style={{
+   328→          background: 'linear-gradient(180deg, rgba(30, 40, 50, 0.95), rgba(15, 20, 30, 0.95))',
+   329→          border: '1px solid rgba(255,255,255,0.15)',
+   330→          boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+   331→        }}
+   332→      >
+   333→        <h2 className="text-3xl font-bold text-amber-300 mb-2">Wildlands Reborn</h2>
+   334→        <p className="text-white/60 text-sm mb-6">Pauza</p>
+   335→        <div className="grid grid-cols-2 gap-2">
+   336→          <button
+   337→            onClick={onResume}
+   338→            className="px-4 py-2.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded-md font-semibold transition-colors col-span-2"
+   339→          >
+   340→            ▶ Wznów grę
+   341→          </button>
+   342→          <button onClick={onShowInventory} className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-md transition-colors text-sm">
+   343→            🎒 Ekwipunek
+   344→          </button>
+   345→          <button onClick={onShowCrafting} className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-md transition-colors text-sm">
+   346→            🔨 Crafting
+   347→          </button>
+   348→          <button onClick={onShowQuests} className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-md transition-colors text-sm">
+   349→            📜 Questy
+   350→          </button>
+   351→          <button onClick={onShowHelp} className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-md transition-colors text-sm">
+   352→            ❓ Pomoc
+   353→          </button>
+   354→        </div>
+   355→        <p className="text-white/40 text-xs mt-4">Kliknij &quot;Wznów&quot;, aby zablokować kursor i grać dalej.</p>
+   356→      </div>
+   357→    </div>
+   358→  );
+   359→}
+   360→
+   361→function InventoryModal({
+   362→  state,
+   363→  onClose,
+   364→  onMoveToHotbar,
+   365→  onGiveItem,
+   366→}: {
+   367→  state: GameUIState;
+   368→  onClose: () => void;
+   369→  onMoveToHotbar: (invIndex: number, hotbarSlot: number) => void;
+   370→  onGiveItem: (block: BlockType, count: number) => void;
+   371→}) {
+   372→  // Show inventory grid (28 slots), allow drag to hotbar
+   373→  // For simplicity, clicking an item moves it to the first empty hotbar slot
+   374→  const [selectedItem, setSelectedItem] = useState<number | null>(null);
+   375→
+   376→  // Build a 28-slot array
+   377→  const slots = Array.from({ length: 28 }).map((_, i) => state.inventory[i] || { block: 'air' as BlockType, count: 0 });
+   378→
+   379→  return (
+   380→    <Modal title="Ekwipunek" onClose={onClose} maxWidth="max-w-3xl">
+   381→      <div className="grid grid-cols-2 gap-6">
+   382→        <div>
+   383→          <h3 className="text-white font-semibold mb-2 text-sm">Plecak (28)</h3>
+   384→          <div className="grid grid-cols-7 gap-1.5">
+   385→            {slots.map((item, i) => (
+   386→              <button
+   387→                key={i}
+   388→                onClick={() => {
+   389→                  if (item.count > 0 && item.block !== 'air') {
+   390→                    // Move to first empty hotbar slot
+   391→                    const empty = state.hotbar.findIndex(b => b === null);
+   392→                    if (empty >= 0) {
+   393→                      onMoveToHotbar(i, empty);
+   394→                    }
+   395→                  }
+   396→                }}
+   397→                className="aspect-square rounded-md flex items-center justify-center relative transition-all hover:scale-105"
+   398→                style={{
+   399→                  background: item.count > 0 ? 'rgba(60, 70, 85, 0.8)' : 'rgba(20, 25, 35, 0.5)',
+   400→                  border: selectedItem === i ? '2px solid #fbbf24' : '1px solid rgba(255,255,255,0.1)',
+   401→                }}
+   402→                title={item.count > 0 ? BLOCKS[item.block].name : 'Pusty'}
+   403→              >
+   404→                {item.count > 0 && <BlockIcon block={item.block} size={28} />}
+   405→                {item.count > 1 && (
+   406→                  <span
+   407→                    className="absolute bottom-0 right-0.5 text-[10px] text-white font-mono font-bold"
+   408→                    style={{ textShadow: '1px 1px 0 #000' }}
+   409→                  >
+   410→                    {item.count}
+   411→                  </span>
+   412→                )}
+   413→              </button>
+   414→            ))}
+   415→          </div>
+   416→          <p className="text-white/50 text-xs mt-2">Kliknij przedmiot, aby umieścić go w hotbarze.</p>
+   417→        </div>
+   418→        <div>
+   419→          <h3 className="text-white font-semibold mb-2 text-sm">Hotbar (7)</h3>
+   420→          <div className="grid grid-cols-7 gap-1.5">
+   421→            {state.hotbar.map((block, i) => (
+   422→              <div
+   423→                key={i}
+   424→                className="aspect-square rounded-md flex items-center justify-center relative"
+   425→                style={{
+   426→                  background: i === state.selectedSlot ? 'rgba(255, 220, 100, 0.2)' : 'rgba(40, 50, 60, 0.5)',
+   427→                  border: i === state.selectedSlot ? '2px solid #fbbf24' : '1px solid rgba(255,255,255,0.1)',
+   428→                }}
+   429→              >
+   430→                {block && <BlockIcon block={block} size={28} />}
+   431→                <span className="absolute top-0 left-1 text-[9px] text-white/60 font-mono">{i + 1}</span>
+   432→              </div>
+   433→            ))}
+   434→          </div>
+   435→          <h3 className="text-white font-semibold mb-2 mt-4 text-sm">Creative Mode</h3>
+   436→          <p className="text-white/50 text-xs mb-2">Dodaj przedmiot do ekwipunku:</p>
+   437→          <div className="grid grid-cols-7 gap-1.5 max-h-32 overflow-y-auto">
+   438→            {(Object.keys(BLOCKS) as BlockType[]).filter(b => b !== 'air').map(block => (
+   439→              <button
+   440→                key={block}
+   441→                onClick={() => onGiveItem(block, 8)}
+   442→                className="aspect-square rounded-md flex items-center justify-center hover:scale-110 transition-all"
+   443→                style={{ background: 'rgba(40, 50, 60, 0.5)', border: '1px solid rgba(255,255,255,0.1)' }}
+   444→                title={BLOCKS[block].name}
+   445→              >
+   446→                <BlockIcon block={block} size={24} />
+   447→              </button>
+   448→            ))}
+   449→          </div>
+   450→        </div>
+   451→      </div>
+   452→    </Modal>
+   453→  );
+   454→}
+   455→
+   456→function CraftingModal({
+   457→  state,
+   458→  onClose,
+   459→  onCraft,
+   460→}: {
+   461→  state: GameUIState;
+   462→  onClose: () => void;
+   463→  onCraft: (recipeId: string, recipes: any[]) => boolean | void;
+   464→}) {
+   465→  return (
+   466→    <Modal title="Crafting" onClose={onClose} maxWidth="max-w-2xl">
+   467→      <p className="text-white/60 text-sm mb-4">Wybierz przepis, aby wytworzyć przedmiot. Składniki zostaną pobrane z ekwipunku.</p>
+   468→      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-96 overflow-y-auto">
+   469→        {RECIPES.map(recipe => {
+   470→          const canCraft = recipe.ingredients.every(ing => {
+   471→            const have = state.inventory.find(it => it.block === ing.block)?.count ?? 0;
+   472→            return have >= ing.count;
+   473→          });
+   474→          return (
+   475→            <div
+   476→              key={recipe.id}
+   477→              className="rounded-md p-3 transition-all"
+   478→              style={{
+   479→                background: canCraft ? 'rgba(60, 70, 85, 0.7)' : 'rgba(40, 30, 30, 0.5)',
+   480→                border: canCraft ? '1px solid rgba(74, 222, 128, 0.4)' : '1px solid rgba(220, 38, 38, 0.3)',
+   481→              }}
+   482→            >
+   483→              <div className="flex items-start justify-between gap-2 mb-2">
+   484→                <div>
+   485→                  <div className="text-white font-semibold text-sm">{recipe.name}</div>
+   486→                  <div className="text-white/50 text-xs">{recipe.description}</div>
+   487→                  {recipe.requiresStation && (
+   488→                    <div className="text-amber-300 text-[10px] mt-0.5">⚠ Wymaga: {recipe.requiresStation}</div>
+   489→                  )}
+   490→                </div>
+   491→                <div className="flex flex-col items-center">
+   492→                  <BlockIcon block={recipe.output.block} size={32} />
+   493→                  <span className="text-white text-xs font-mono mt-0.5">×{recipe.output.count}</span>
+   494→                </div>
+   495→              </div>
+   496→              <div className="flex gap-2 flex-wrap mb-2">
+   497→                {recipe.ingredients.map((ing, i) => {
+   498→                  const have = state.inventory.find(it => it.block === ing.block)?.count ?? 0;
+   499→                  const enough = have >= ing.count;
+   500→                  return (
+   501→                    <div
+   502→                      key={i}
+   503→                      className="flex items-center gap-1 px-2 py-1 rounded text-xs"
+   504→                      style={{
+   505→                        background: enough ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+   506→                      }}
+   507→                    >
+   508→                      <BlockIcon block={ing.block} size={16} />
+   509→                      <span className={enough ? 'text-emerald-300' : 'text-red-300'}>{ing.count}</span>
+   510→                      <span className="text-white/40">({have})</span>
+   511→                    </div>
+   512→                  );
+   513→                })}
+   514→              </div>
+   515→              <button
+   516→                onClick={() => onCraft(recipe.id, RECIPES)}
+   517→                disabled={!canCraft}
+   518→                className="w-full py-1.5 rounded text-sm font-semibold transition-colors disabled:opacity-50"
+   519→                style={{
+   520→                  background: canCraft ? '#16a34a' : '#374151',
+   521→                  color: 'white',
+   522→                }}
+   523→              >
+   524→                {canCraft ? 'Wytwórz' : 'Brak składników'}
+   525→              </button>
+   526→            </div>
+   527→          );
+   528→        })}
+   529→      </div>
+   530→    </Modal>
+   531→  );
+   532→}
+   533→
+   534→function QuestsModal({ state, onClose }: { state: GameUIState; onClose: () => void }) {
+   535→  return (
+   536→    <Modal title="Questy" onClose={onClose} maxWidth="max-w-2xl">
+   537→      <div className="space-y-4 max-h-96 overflow-y-auto">
+   538→        {state.quests.map(q => {
+   539→          const allDone = q.objectives.every(o => o.completed);
+   540→          return (
+   541→            <div
+   542→              key={q.id}
+   543→              className="rounded-md p-4"
+   544→              style={{
+   545→                background: allDone ? 'rgba(34, 197, 94, 0.1)' : 'rgba(60, 70, 85, 0.4)',
+   546→                border: allDone ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid rgba(255,255,255,0.1)',
+   547→              }}
+   548→            >
+   549→              <div className="flex items-start justify-between mb-2">
+   550→                <div>
+   551→                  <h3 className={`font-bold ${allDone ? 'text-emerald-300' : 'text-white'}`}>
+   552→                    {allDone ? '✓ ' : ''}{q.title}
+   553→                  </h3>
+   554→                  <p className="text-white/60 text-xs">{q.description}</p>
+   555→                </div>
+   556→                {allDone && <span className="text-emerald-400 text-xs px-2 py-1 bg-emerald-500/20 rounded">Ukończono</span>}
+   557→              </div>
+   558→              <div className="space-y-1.5">
+   559→                {q.objectives.map(o => {
+   560→                  const pct = Math.min(100, (o.progress / o.target.count) * 100);
+   561→                  return (
+   562→                    <div key={o.id}>
+   563→                      <div className="flex justify-between text-xs mb-0.5">
+   564→                        <span className={o.completed ? 'text-emerald-300 line-through' : 'text-white/80'}>
+   565→                          {o.completed ? '✓ ' : ''}{o.description}
+   566→                        </span>
+   567→                        <span className="text-white/50 font-mono">
+   568→                          {Math.min(o.progress, o.target.count)}/{o.target.count}
+   569→                        </span>
+   570→                      </div>
+   571→                      <div className="h-1.5 bg-black/30 rounded-full overflow-hidden">
+   572→                        <div
+   573→                          className="h-full transition-all"
+   574→                          style={{
+   575→                            width: `${pct}%`,
+   576→                            background: o.completed ? '#22c55e' : 'linear-gradient(90deg, #f59e0b, #fbbf24)',
+   577→                          }}
+   578→                        />
+   579→                      </div>
+   580→                    </div>
+   581→                  );
+   582→                })}
+   583→              </div>
+   584→              {q.reward && (
+   585→                <div className="mt-2 text-xs text-amber-300">
+   586→                  🎁 Nagroda: {q.reward.count}× {BLOCKS[q.reward.block].name}
+   587→                </div>
+   588→              )}
+   589→            </div>
+   590→          );
+   591→        })}
+   592→      </div>
+   593→    </Modal>
+   594→  );
+   595→}
+   596→
+   597→function HelpModal({ onClose }: { onClose: () => void }) {
+   598→  return (
+   599→    <Modal title="Pomoc" onClose={onClose} maxWidth="max-w-xl">
+   600→      <div className="space-y-4 text-sm text-white/80">
+   601→        <div>
+   602→          <h3 className="text-amber-300 font-semibold mb-1">🎮 Sterowanie</h3>
+   603→          <ul className="space-y-1 text-xs">
+   604→            <li><b>WASD</b> — ruch</li>
+   605→            <li><b>Spacja</b> — skok / wznoszenie (w trybie latania)</li>
+   606→            <li><b>Shift</b> — bieg (zużywa staminkę)</li>
+   607→            <li><b>Mysz</b> — rozglądanie się</li>
+   608→            <li><b>LPM (przytrzymaj)</b> — kopanie / niszczenie bloków</li>
+   609→            <li><b>PPM</b> — stawianie bloku</li>
+   610→            <li><b>Kółko myszy</b> — zmiana slotu w hotbarze</li>
+   611→            <li><b>1-7</b> — bezpośredni wybór slotu</li>
+   612→            <li><b>E</b> — ekwipunek</li>
+   613→            <li><b>Q</b> — crafting</li>
+   614→            <li><b>Tab</b> — questy</li>
+   615→            <li><b>H</b> — pomoc</li>
+   616→            <li><b>ESC</b> — pauza</li>
+   617→            <li><b>Ctrl+F</b> — przełącz tryb latania</li>
+   618→          </ul>
+   619→        </div>
+   620→        <div>
+   621→          <h3 className="text-amber-300 font-semibold mb-1">🎯 Cel gry</h3>
+   622→          <p className="text-xs">
+   623→            Przetrwaj w dziczy! Zbieraj drewno, kamień i surowce. Buduj schronienie, twórz narzędzia,
+   624→            odkrywaj jaskinie w poszukiwaniu rud, wytapiaj metale i rozwijaj się technologicznie.
+   625→            Ukończ wszystkie 3 questy, aby osiągnąć mistrzostwo.
+   626→          </p>
+   627→        </div>
+   628→        <div>
+   629→          <h3 className="text-amber-300 font-semibold mb-1">💡 Wskazówki</h3>
+   630→          <ul className="space-y-1 text-xs">
+   631→            <li>• Zbieraj drewno z drzew (przytrzymaj LPM na kłodzie)</li>
+   632→            <li>• Stwórz pochodnie na noc (drewno + węgiel)</li>
+   633→            <li>• Węgiel i rudy znajdziesz głęboko w jaskiniach</li>
+   634→            <li>• Woda gaśnie upadek - skacz do niej z wysokości</li>
+   635→            <li>• Jedz grzyby i dynie aby odzyskać głód</li>
+   636→            <li>• Stawiaj bloki aby budować schronienia</li>
+   637→            <li>• W trybie creative (E) możesz dodać dowolne bloki</li>
+   638→          </ul>
+   639→        </div>
+   640→      </div>
+   641→    </Modal>
+   642→  );
+   643→}
+   644→
+   645→function Modal({ title, children, onClose, maxWidth = 'max-w-lg' }: { title: string; children: React.ReactNode; onClose: () => void; maxWidth?: string }) {
+   646→  return (
+   647→    <div className="absolute inset-0 z-40 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
+   648→      <div
+   649→        className={`rounded-xl w-full ${maxWidth} max-h-[90vh] overflow-hidden flex flex-col`}
+   650→        style={{
+   651→          background: 'linear-gradient(180deg, rgba(30, 40, 50, 0.98), rgba(15, 20, 30, 0.98))',
+   652→          border: '1px solid rgba(255,255,255,0.15)',
+   653→          boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
+   654→        }}
+   655→      >
+   656→        <div className="flex items-center justify-between p-4 border-b border-white/10">
+   657→          <h2 className="text-xl font-bold text-amber-300">{title}</h2>
+   658→          <button onClick={onClose} className="text-white/60 hover:text-white text-2xl leading-none">×</button>
+   659→        </div>
+   660→        <div className="p-4 overflow-y-auto">{children}</div>
+   661→      </div>
+   662→    </div>
+   663→  );
+   664→}
+   665→

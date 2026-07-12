@@ -1,0 +1,25 @@
+{
+  "name": "copy_file",
+  "description": "Copies an existing file to a destination folder in Box (see Box API Copy file). The source file is not modified. Provide `parent_folder_id` as the folder that will contain the new copy; use `\"0\"` for the user's root folder. Optionally set `name` to rename the copy; otherwise the original file name is used.\n\n**Key features:**\n- Destination folder external-access guard (same as other write tools)\n- Optional new name for the copied file\n\n<examples>\nCopy a file into a folder:\n{\n  \"file_id\": \"123456789\",\n  \"parent_folder_id\": \"987654321\"\n}\n\nCopy a file to the user's root folder with a new name:\n{\n  \"file_id\": \"123456789\",\n  \"parent_folder_id\": \"0\",\n  \"name\": \"Quarterly-report-copy.docx\"\n}\n</examples>",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "file_id": {
+        "type": "string",
+        "minLength": 1
+      },
+      "parent_folder_id": {
+        "type": "string",
+        "default": "0"
+      },
+      "name": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "file_id"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "name": "list_item_collaborations",
+  "description": "Lists all collaborations for multiple files and folders in a single request. This tool efficiently aggregates collaboration information across different item types, making multiple API calls as needed and providing comprehensive results with error handling for items that cannot be accessed.\n\nThe tool processes up to 10 items simultaneously, handling both files and folders. It returns detailed collaboration information including user details, roles, status, and timestamps. Partial failures are handled gracefully - if some items fail to load, the tool still returns collaborations for successful items along with error details for failed requests.\n\n<examples>\nBasic file collaboration listing:\n<input>\n{\n  \"items\": [\n    { \"id\": \"123456789\", \"type\": \"file\" }\n  ]\n}\n</input>\n\nSingle folder collaboration listing:\n<input>\n{\n  \"items\": [\n    { \"id\": \"987654321\", \"type\": \"folder\" }\n  ]\n}\n</input>\n\nMultiple items for bulk analysis:\n<input>\n{\n  \"items\": [\n    { \"id\": \"111222333\", \"type\": \"file\" },\n    { \"id\": \"444555666\", \"type\": \"file\" },\n    { \"id\": \"777888999\", \"type\": \"folder\" },\n    { \"id\": \"101112131\", \"type\": \"folder\" }\n  ]\n}\n</input>\n</examples>",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^\\d+$",
+              "description": "The unique identifier of the item"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "file",
+                "folder"
+              ],
+              "description": "The type of item: file or folder"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        "minItems": 1,
+        "maxItems": 10,
+        "description": "Array of items to list collaborations for"
+      }
+    },
+    "required": [
+      "items"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

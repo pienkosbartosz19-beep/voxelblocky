@@ -1,0 +1,885 @@
+     1→import { BLOCKS, WORLD_CONFIG } from './blocks';
+     2→import { fbm2D, fbm3D, hash2, hash3, valueNoise2D } from './noise';
+     3→import type { BlockType } from './types';
+     4→
+     5→type TreeSpecies = 'oak' | 'pine' | 'spruce' | 'birch' | 'autumn_oak' | 'autumn_birch' | 'willow';
+     6→
+     7→export class World {
+     8→  seed: number;
+     9→  chunkSize: number;
+    10→  worldHeight: number;
+    11→  seaLevel: number;
+    12→  // chunkKey: "cx,cz" -> Uint8Array (block ids index by x + z*size + y*size*size)
+    13→  chunks: Map<string, Uint8Array> = new Map();
+    14→  modifiedBlocks: Map<string, BlockType> = new Map();
+    15→
+    16→  blockIdMap: Map<BlockType, number> = new Map();
+    17→  idBlockMap: BlockType[] = [];
+    18→
+    19→  constructor(seed: number = 1337) {
+    20→    this.seed = seed;
+    21→    this.chunkSize = WORLD_CONFIG.CHUNK_SIZE;
+    22→    this.worldHeight = WORLD_CONFIG.WORLD_HEIGHT;
+    23→    this.seaLevel = WORLD_CONFIG.SEA_LEVEL;
+    24→
+    25→    let id = 0;
+    26→    for (const bt of Object.keys(BLOCKS) as BlockType[]) {
+    27→      this.blockIdMap.set(bt, id);
+    28→      this.idBlockMap.push(bt);
+    29→      id++;
+    30→    }
+    31→  }
+    32→
+    33→  blockToId(bt: BlockType): number {
+    34→    return this.blockIdMap.get(bt) ?? 0;
+    35→  }
+    36→
+    37→  idToBlock(id: number): BlockType {
+    38→    return this.idBlockMap[id] ?? 'air';
+    39→  }
+    40→
+    41→  worldToChunk(x: number, z: number): { cx: number; cz: number; lx: number; lz: number } {
+    42→    const cx = Math.floor(x / this.chunkSize);
+    43→    const cz = Math.floor(z / this.chunkSize);
+    44→    const lx = ((x % this.chunkSize) + this.chunkSize) % this.chunkSize;
+    45→    const lz = ((z % this.chunkSize) + this.chunkSize) % this.chunkSize;
+    46→    return { cx, cz, lx, lz };
+    47→  }
+    48→
+    49→  chunkKey(cx: number, cz: number): string {
+    50→    return `${cx},${cz}`;
+    51→  }
+    52→
+    53→  blockKey(x: number, y: number, z: number): string {
+    54→    return `${x},${y},${z}`;
+    55→  }
+    56→
+    57→  getBlock(x: number, y: number, z: number): BlockType {
+    58→    if (y < 0 || y >= this.worldHeight) return 'air';
+    59→    const modKey = this.blockKey(x, y, z);
+    60→    const mod = this.modifiedBlocks.get(modKey);
+    61→    if (mod !== undefined) return mod;
+    62→
+    63→    const { cx, cz, lx, lz } = this.worldToChunk(x, z);
+    64→    const key = this.chunkKey(cx, cz);
+    65→    let chunk = this.chunks.get(key);
+    66→    if (!chunk) {
+    67→      chunk = this.generateChunk(cx, cz);
+    68→      this.chunks.set(key, chunk);
+    69→    }
+    70→    const idx = lx + lz * this.chunkSize + y * this.chunkSize * this.chunkSize;
+    71→    return this.idToBlock(chunk[idx]);
+    72→  }
+    73→
+    74→  getBlockForMesh(x: number, y: number, z: number): BlockType {
+    75→    if (y < 0 || y >= this.worldHeight) return 'air';
+    76→    const modKey = this.blockKey(x, y, z);
+    77→    const mod = this.modifiedBlocks.get(modKey);
+    78→    if (mod !== undefined) return mod;
+    79→
+    80→    const { cx, cz, lx, lz } = this.worldToChunk(x, z);
+    81→    const key = this.chunkKey(cx, cz);
+    82→    const chunk = this.chunks.get(key);
+    83→    if (!chunk) return 'air';
+    84→
+    85→    const idx = lx + lz * this.chunkSize + y * this.chunkSize * this.chunkSize;
+    86→    return this.idToBlock(chunk[idx]);
+    87→  }
+    88→
+    89→  ensureChunkData(cx: number, cz: number) {
+    90→    const key = this.chunkKey(cx, cz);
+    91→    if (!this.chunks.has(key)) {
+    92→      this.chunks.set(key, this.generateChunk(cx, cz));
+    93→    }
+    94→  }
+    95→
+    96→  unloadDistantChunks(pcx: number, pcz: number, distance: number) {
+    97→    for (const key of Array.from(this.chunks.keys())) {
+    98→      const [cxStr, czStr] = key.split(',');
+    99→      const cx = parseInt(cxStr, 10);
+   100→      const cz = parseInt(czStr, 10);
+   101→      if (Math.abs(cx - pcx) > distance || Math.abs(cz - pcz) > distance) {
+   102→        this.chunks.delete(key);
+   103→      }
+   104→    }
+   105→  }
+   106→
+   107→  setBlock(x: number, y: number, z: number, bt: BlockType, markModified = true): boolean {
+   108→    if (y < 0 || y >= this.worldHeight) return false;
+   109→
+   110→    if (markModified) {
+   111→      this.modifiedBlocks.set(this.blockKey(x, y, z), bt);
+   112→    }
+   113→
+   114→    const { cx, cz, lx, lz } = this.worldToChunk(x, z);
+   115→    const key = this.chunkKey(cx, cz);
+   116→    let chunk = this.chunks.get(key);
+   117→    if (!chunk) {
+   118→      chunk = this.generateChunk(cx, cz);
+   119→      this.chunks.set(key, chunk);
+   120→    }
+   121→    const idx = lx + lz * this.chunkSize + y * this.chunkSize * this.chunkSize;
+   122→    chunk[idx] = this.blockToId(bt);
+   123→    return true;
+   124→  }
+   125→
+   126→  generateChunk(cx: number, cz: number): Uint8Array {
+   127→    const size = this.chunkSize;
+   128→    const total = size * size * this.worldHeight;
+   129→    const chunk = new Uint8Array(total);
+   130→
+   131→    const baseX = cx * size;
+   132→    const baseZ = cz * size;
+   133→
+   134→    // Pre-compute biome & heightmap for this chunk
+   135→    const heightmap = new Int16Array(size * size);
+   136→    const biomemap = new Uint8Array(size * size); // 0=plains,1=forest,2=desert,3=snow,4=mountains,5=taiga,6=autumn_forest,7=swamp
+   137→    const temperatureMap = new Float32Array(size * size);
+   138→    const humidityMap = new Float32Array(size * size);
+   139→    const foliageMap = new Float32Array(size * size);
+   140→
+   141→    for (let lx = 0; lx < size; lx++) {
+   142→      for (let lz = 0; lz < size; lz++) {
+   143→        const wx = baseX + lx;
+   144→        const wz = baseZ + lz;
+   145→
+   146→        const cont = fbm2D(wx * 0.005, wz * 0.005, this.seed, 2);
+   147→        const hills = fbm2D(wx * 0.02, wz * 0.02, this.seed + 1000, 2);
+   148→        const mountains = Math.pow(fbm2D(wx * 0.008, wz * 0.008, this.seed + 5000, 2), 2);
+   149→
+   150→        let baseHeight = this.seaLevel + 4;
+   151→        baseHeight += (cont - 0.5) * 16;
+   152→        baseHeight += (hills - 0.5) * 8;
+   153→        baseHeight += mountains * 28;
+   154→
+   155→        const temp = fbm2D(wx * 0.003, wz * 0.003, this.seed + 9000, 2);
+   156→        const humid = fbm2D(wx * 0.003, wz * 0.003, this.seed + 13000, 2);
+   157→        const foliage = fbm2D(wx * 0.006, wz * 0.006, this.seed + 17000, 2);
+   158→
+   159→        const biome = this.getBiome(temp, humid, baseHeight, foliage);
+   160→        const heightInt = Math.max(1, Math.min(this.worldHeight - 1, Math.floor(baseHeight)));
+   161→
+   162→        heightmap[lx + lz * size] = heightInt;
+   163→        biomemap[lx + lz * size] = biome;
+   164→        temperatureMap[lx + lz * size] = temp;
+   165→        humidityMap[lx + lz * size] = humid;
+   166→        foliageMap[lx + lz * size] = foliage;
+   167→      }
+   168→    }
+   169→
+   170→    // Fill terrain columns
+   171→    for (let lx = 0; lx < size; lx++) {
+   172→      for (let lz = 0; lz < size; lz++) {
+   173→        const wx = baseX + lx;
+   174→        const wz = baseZ + lz;
+   175→        const heightInt = heightmap[lx + lz * size];
+   176→        const biome = biomemap[lx + lz * size];
+   177→
+   178→        for (let y = 0; y <= heightInt; y++) {
+   179→          let block: BlockType = 'stone';
+   180→          if (y === 0) {
+   181→            block = 'bedrock';
+   182→          } else if (y < heightInt - 4) {
+   183→            block = 'stone';
+   184→            const oreNoise = hash3(wx, y, wz * 31 + 7, this.seed + 2000);
+   185→            const depth = heightInt - y;
+   186→            if (depth > 5) {
+   187→              if (oreNoise > 0.985 && y < 12) block = 'diamond_ore';
+   188→              else if (oreNoise > 0.97 && y < 20) block = 'mithril_ore';
+   189→              else if (oreNoise > 0.96 && y < 22) block = 'gold_ore';
+   190→              else if (oreNoise > 0.945 && y < 32) block = 'iron_ore';
+   191→              else if (oreNoise > 0.93 && y < 40) block = 'copper_ore';
+   192→              else if (oreNoise > 0.92 && y < 45) block = 'tin_ore';
+   193→              else if (oreNoise > 0.918 && y < 50) block = 'zinc_ore';
+   194→              else if (oreNoise > 0.89) block = 'coal_ore';
+   195→              else if (oreNoise > 0.885 && y > 30) block = 'sulfur_ore';
+   196→              else if (oreNoise > 0.88 && y > 10) block = 'salt_ore';
+   197→              else {
+   198→                // Stone variants
+   199→                const stoneVar = hash3(wx * 0.3, y * 0.3, wz * 0.3, this.seed + 3000);
+   200→                if (stoneVar > 0.94) block = 'granite';
+   201→                else if (stoneVar > 0.92) block = 'slate';
+   202→                else if (stoneVar > 0.91 && y > 12) block = 'marble';
+   203→                else if (stoneVar > 0.905) block = 'cracked_stone';
+   204→              }
+   205→            }
+   206→          } else if (y < heightInt) {
+   207→            // Subsurface
+   208→            block = this.getSubsurfaceBlock(biome);
+   209→          } else {
+   210→            // Surface
+   211→            block = this.getSurfaceBlock(biome, y, heightInt);
+   212→          }
+   213→
+   214→          // Cave carving
+   215→          if (y > 1 && y < heightInt - 2 && block !== 'bedrock') {
+   216→            const n1 = hash3(wx * 3, y * 5, wz * 3, this.seed + 7777);
+   217→            const n2 = hash3(wx * 7, y * 3, wz * 5, this.seed + 8888);
+   218→            if (n1 > 0.92 && n2 > 0.75) {
+   219→              block = 'air';
+   220→            } else if (y < 10 && n1 > 0.96 && n2 > 0.85) {
+   221→              block = 'magma';
+   222→            }
+   223→          }
+   224→
+   225→          const idx = lx + lz * size + y * size * size;
+   226→          chunk[idx] = this.blockToId(block);
+   227→        }
+   228→
+   229→        // Fill water up to sea level
+   230→        for (let y = heightInt + 1; y <= this.seaLevel; y++) {
+   231→          const idx = lx + lz * size + y * size * size;
+   232→          if (chunk[idx] === this.blockToId('air')) {
+   233→            chunk[idx] = this.blockToId('water');
+   234→          }
+   235→        }
+   236→
+   237→        // Surface decorations
+   238→        if (heightInt >= this.seaLevel && heightInt < this.worldHeight - 8) {
+   239→          this.placeDecorations(chunk, lx, lz, heightInt, wx, wz, biome, biomemap, size, foliageMap[lx + lz * size]);
+   240→        }
+   241→      }
+   242→    }
+   243→
+   244→    return chunk;
+   245→  }
+   246→
+   247→  getBiome(temp: number, humid: number, height: number, foliage: number): number {
+   248→    if (height > this.seaLevel + 22) return 4; // mountains
+   249→    if (temp < 0.32) return 3; // snow
+   250→    if (temp > 0.42 && temp < 0.55 && humid > 0.55 && foliage > 0.5) return 6; // autumn_forest
+   251→    if (temp > 0.65 && humid < 0.4) return 2; // desert
+   252→    if (temp < 0.45 && humid > 0.5) return 5; // taiga (cold forest)
+   253→    if (humid > 0.7 && height < this.seaLevel + 3) return 7; // swamp
+   254→    if (humid > 0.55) return 1; // forest
+   255→    if (humid < 0.35) return 2; // desert edge
+   256→    return 0; // plains
+   257→  }
+   258→
+   259→  getBiomeName(b: number): string {
+   260→    return ['Równiny', 'Las', 'Pustynia', 'Tundra', 'Góry', 'Tajga', 'Jesienno-Liściasty', 'Bagno'][b] || 'Nieznany';
+   261→  }
+   262→
+   263→  getSurfaceBlock(biome: number, y: number, height: number): BlockType {
+   264→    if (y === height) {
+   265→      switch (biome) {
+   266→        case 2: return 'sand';
+   267→        case 3: return 'snow';
+   268→        case 4: return height > this.seaLevel + 18 ? 'stone' : 'snow_grass';
+   269→        case 5: return 'snow_grass';
+   270→        case 7: return 'mud';
+   271→        case 6: return 'grass_autumn';
+   272→        default: return 'grass';
+   273→      }
+   274→    }
+   275→    return this.getSubsurfaceBlock(biome);
+   276→  }
+   277→
+   278→  getSubsurfaceBlock(biome: number): BlockType {
+   279→    switch (biome) {
+   280→      case 2: return 'sand';
+   281→      case 3:
+   282→      case 5: return 'dirt';
+   283→      case 7: return 'mud';
+   284→      default: return 'dirt';
+   285→    }
+   286→  }
+   287→
+   288→  placeDecorations(
+   289→    chunk: Uint8Array,
+   290→    lx: number,
+   291→    lz: number,
+   292→    heightInt: number,
+   293→    wx: number,
+   294→    wz: number,
+   295→    biome: number,
+   296→    biomemap: Uint8Array,
+   297→    size: number,
+   298→    foliage: number,
+   299→  ) {
+   300→    const setInChunk = (y: number, block: BlockType) => {
+   301→      if (y < 0 || y >= this.worldHeight) return;
+   302→      const idx = lx + lz * size + y * size * size;
+   303→      chunk[idx] = this.blockToId(block);
+   304→    };
+   305→
+   306→    // Set with offset (for tree branches that extend beyond the column)
+   307→    const setInChunkOffset = (ox: number, oz: number, y: number, block: BlockType) => {
+   308→      const px = lx + ox;
+   309→      const pz = lz + oz;
+   310→      if (px < 0 || px >= size || pz < 0 || pz >= size) return;
+   311→      if (y < 0 || y >= this.worldHeight) return;
+   312→      const idx = px + pz * size + y * size * size;
+   313→      chunk[idx] = this.blockToId(block);
+   314→    };
+   315→
+   316→    const treeRoll = hash2(wx, wz, this.seed + 1234);
+   317→    const flowerRoll = hash2(wx + 0.5, wz + 0.5, this.seed + 5678);
+   318→    const grassRoll = hash2(wx + 0.7, wz + 0.3, this.seed + 9876);
+   319→    const bushRoll = hash2(wx - 0.3, wz + 0.7, this.seed + 4321);
+   320→    const detailRoll = hash2(wx + 0.1, wz - 0.2, this.seed + 1111);
+   321→
+   322→    // Tree species selection by biome
+   323→    // Density: forest/taiga/autumn_dense forest = dense, plains = sparse, desert = cactus
+   324→    if (biome === 1 && treeRoll > 0.80) {
+   325→      // Forest - mostly oak + some birch + pine mix
+   326→      const speciesRoll = hash2(wx * 1.7, wz * 1.7, this.seed + 2222);
+   327→      let species: TreeSpecies = 'oak';
+   328→      if (speciesRoll > 0.85) species = 'pine';
+   329→      else if (speciesRoll > 0.65) species = 'birch';
+   330→      else if (speciesRoll > 0.45) species = 'spruce';
+   331→      this.makeTree(setInChunkOffset, heightInt + 1, species, wx, wz);
+   332→    } else if (biome === 5 && treeRoll > 0.78) {
+   333→      // Taiga - mostly pine + spruce
+   334→      const speciesRoll = hash2(wx * 1.7, wz * 1.7, this.seed + 3333);
+   335→      let species: TreeSpecies = 'pine';
+   336→      if (speciesRoll > 0.55) species = 'spruce';
+   337→      this.makeTree(setInChunkOffset, heightInt + 1, species, wx, wz);
+   338→    } else if (biome === 6 && treeRoll > 0.72) {
+   339→      // Autumn forest - dense, autumn leaves
+   340→      const speciesRoll = hash2(wx * 1.7, wz * 1.7, this.seed + 4444);
+   341→      let species: TreeSpecies = 'autumn_oak';
+   342→      if (speciesRoll > 0.65) species = 'autumn_birch';
+   343→      this.makeTree(setInChunkOffset, heightInt + 1, species, wx, wz);
+   344→    } else if (biome === 0 && treeRoll > 0.96) {
+   345→      // Plains - sparse oaks
+   346→      this.makeTree(setInChunkOffset, heightInt + 1, 'oak', wx, wz);
+   347→    } else if (biome === 7 && treeRoll > 0.92) {
+   348→      // Swamp - willows
+   349→      this.makeTree(setInChunkOffset, heightInt + 1, 'willow', wx, wz);
+   350→    } else if (biome === 3 && treeRoll > 0.93) {
+   351→      // Snow - spruce
+   352→      this.makeTree(setInChunkOffset, heightInt + 1, 'spruce', wx, wz);
+   353→    } else if (biome === 2) {
+   354→      // Desert
+   355→      if (detailRoll > 0.95) {
+   356→        const cactusHeight = 2 + Math.floor(hash2(wx + 1, wz + 1, this.seed + 99) * 3);
+   357→        for (let i = 0; i < cactusHeight; i++) {
+   358→          setInChunk(heightInt + 1 + i, 'cactus');
+   359→        }
+   360→      } else if (detailRoll > 0.93) {
+   361→        setInChunk(heightInt + 1, 'dead_bush');
+   362→      }
+   363→    } else if (biome === 4 && heightInt < this.seaLevel + 16) {
+   364→      // Mountains (lower slopes) - sparse spruce
+   365→      if (treeRoll > 0.94) {
+   366→        this.makeTree(setInChunkOffset, heightInt + 1, 'spruce', wx, wz);
+   367→      }
+   368→    }
+   369→
+   370→    // Surface plants & flowers
+   371→    if (biome !== 2 && biome !== 4) {
+   372→      if (biome === 1 || biome === 5 || biome === 6) {
+   373→        // Forest floors: tall grass, ferns, mushrooms
+   374→        if (grassRoll > 0.55) {
+   375→          const r = hash2(wx + 1.2, wz + 2.3, this.seed + 55);
+   376→          if (r > 0.6) setInChunk(heightInt + 1, 'tall_grass');
+   377→          else if (r > 0.4) setInChunk(heightInt + 1, 'fern');
+   378→        }
+   379→        if (bushRoll > 0.92) {
+   380→          setInChunk(heightInt + 1, 'bush');
+   381→        } else if (bushRoll > 0.96) {
+   382→          setInChunk(heightInt + 1, 'bush_berry');
+   383→        }
+   384→        if (flowerRoll > 0.94) {
+   385→          // Forest mushrooms
+   386→          setInChunk(heightInt + 1, hash2(wx, wz, this.seed + 77) > 0.5 ? 'mushroom_brown' : 'mushroom_red');
+   387→        }
+   388→        if (flowerRoll > 0.97) {
+   389→          // Flowers
+   390→          const r = hash2(wx + 3, wz - 2, this.seed + 88);
+   391→          if (r > 0.8) setInChunk(heightInt + 1, 'flower_purple');
+   392→          else if (r > 0.6) setInChunk(heightInt + 1, 'flower_blue');
+   393→          else if (r > 0.4) setInChunk(heightInt + 1, 'flower_white');
+   394→          else if (r > 0.2) setInChunk(heightInt + 1, 'flower_yellow');
+   395→          else setInChunk(heightInt + 1, 'flower_red');
+   396→        }
+   397→      } else if (biome === 0) {
+   398→        // Plains: flowers and tall grass
+   399→        if (grassRoll > 0.5) setInChunk(heightInt + 1, 'tall_grass');
+   400→        if (flowerRoll > 0.85) {
+   401→          const r = hash2(wx + 3, wz - 2, this.seed + 88);
+   402→          if (r > 0.7) setInChunk(heightInt + 1, 'flower_red');
+   403→          else if (r > 0.4) setInChunk(heightInt + 1, 'flower_yellow');
+   404→          else if (r > 0.2) setInChunk(heightInt + 1, 'flower_white');
+   405→          else setInChunk(heightInt + 1, 'flower_purple');
+   406→        }
+   407→        if (flowerRoll > 0.97) setInChunk(heightInt + 1, 'pumpkin');
+   408→      } else if (biome === 7) {
+   409→        // Swamp: reeds, lily pads on water nearby
+   410→        if (grassRoll > 0.5) setInChunk(heightInt + 1, 'tall_grass');
+   411→        if (bushRoll > 0.8) setInChunk(heightInt + 1, 'fern');
+   412→        if (flowerRoll > 0.92) setInChunk(heightInt + 1, 'mushroom_brown');
+   413→      } else if (biome === 3) {
+   414→        // Snow: occasional pinecone and dry grass
+   415→        if (grassRoll > 0.85) setInChunk(heightInt + 1, 'dead_bush');
+   416→        if (flowerRoll > 0.97) setInChunk(heightInt + 1, 'pinecone');
+   417→      } else if (biome === 6) {
+   418→        // Autumn forest floor
+   419→        if (grassRoll > 0.6) setInChunk(heightInt + 1, 'tall_grass');
+   420→        if (bushRoll > 0.85) setInChunk(heightInt + 1, 'bush');
+   421→        if (detailRoll > 0.7) setInChunk(heightInt + 1, 'fallen_leaves');
+   422→        if (flowerRoll > 0.97) setInChunk(heightInt + 1, 'mushroom_red');
+   423→      }
+   424→
+   425→      // Lavender in humid temperate biomes
+   426→      if ((biome === 0 || biome === 1) && flowerRoll > 0.96 && foliage > 0.6) {
+   427→        setInChunk(heightInt + 1, 'lavender');
+   428→      }
+   429→    }
+   430→
+   431→    // Pebbles & rocks scattered
+   432→    if (detailRoll > 0.97 && (biome === 0 || biome === 1 || biome === 5 || biome === 6)) {
+   433→      setInChunk(heightInt + 1, hash2(wx + 5, wz - 5, this.seed + 33) > 0.5 ? 'pebbles' : 'rock_moss');
+   434→    }
+   435→  }
+   436→
+   437→  // === Tree generators ===
+   438→  // Each tree uses setInChunkOffset(ox, oz, y, block) where (ox, oz) is relative to the trunk base.
+   439→  // The tree generator must stay within the chunk (offset bounds -8..+8).
+   440→
+   441→  makeTree(
+   442→    setInChunk: (ox: number, oz: number, y: number, block: BlockType) => void,
+   443→    baseY: number,
+   444→    species: TreeSpecies,
+   445→    wx: number,
+   446→    wz: number,
+   447→  ) {
+   448→    const seed1 = hash2(wx * 3.1, wz * 3.1, this.seed + 5000);
+   449→    const seed2 = hash2(wx * 1.7, wz * 1.7, this.seed + 6000);
+   450→    const seed3 = hash2(wx + 11, wz - 11, this.seed + 7000);
+   451→
+   452→    switch (species) {
+   453→      case 'oak':
+   454→        this.makeOakTree(setInChunk, baseY, seed1, seed2, seed3);
+   455→        break;
+   456→      case 'pine':
+   457→        this.makePineTree(setInChunk, baseY, seed1, seed2, seed3);
+   458→        break;
+   459→      case 'spruce':
+   460→        this.makeSpruceTree(setInChunk, baseY, seed1, seed2, seed3);
+   461→        break;
+   462→      case 'birch':
+   463→        this.makeBirchTree(setInChunk, baseY, seed1, seed2, seed3);
+   464→        break;
+   465→      case 'autumn_oak':
+   466→        this.makeAutumnOakTree(setInChunk, baseY, seed1, seed2, seed3);
+   467→        break;
+   468→      case 'autumn_birch':
+   469→        this.makeAutumnBirchTree(setInChunk, baseY, seed1, seed2, seed3);
+   470→        break;
+   471→      case 'willow':
+   472→        this.makeWillowTree(setInChunk, baseY, seed1, seed2, seed3);
+   473→        break;
+   474→    }
+   475→  }
+   476→
+   477→  // Oak: thick trunk, wide branching canopy
+   478→  makeOakTree(set: (ox: number, oz: number, y: number, b: BlockType) => void, baseY: number, s1: number, s2: number, s3: number) {
+   479→    const trunkHeight = 5 + Math.floor(s1 * 4); // 5-8 blocks
+   480→    // Trunk (slightly tapered - 1 wide mostly, 2 wide at base for big trees)
+   481→    for (let i = 0; i < trunkHeight; i++) {
+   482→      set(0, 0, baseY + i, 'wood_oak');
+   483→    }
+   484→
+   485→    // Lower branches (horizontal extensions) for visual interest
+   486→    const numBranches = 2 + Math.floor(s2 * 3);
+   487→    for (let i = 0; i < numBranches; i++) {
+   488→      const branchY = baseY + 2 + Math.floor(s1 * (trunkHeight - 3)) + i;
+   489→      const dir = Math.floor(s2 * 4);
+   490→      const dx = [1, -1, 0, 0][dir];
+   491→      const dz = [0, 0, 1, -1][dir];
+   492→      const branchLen = 1 + Math.floor(s3 * 2);
+   493→      for (let j = 1; j <= branchLen; j++) {
+   494→        set(dx * j, dz * j, branchY, 'wood_oak');
+   495→      }
+   496→      // Cluster of leaves at branch end
+   497→      this.placeLeafCluster(set, dx * branchLen, dz * branchLen, branchY + 1, 1.5, 'leaves_oak');
+   498→    }
+   499→
+   500→    // Main canopy - 3 layers of leaves
+   501→    const canopyTop = baseY + trunkHeight;
+   502→    // Bottom layer (widest)
+   503→    this.placeLeafCluster(set, 0, 0, canopyTop - 2, 2.5, 'leaves_oak');
+   504→    // Middle layer
+   505→    this.placeLeafCluster(set, 0, 0, canopyTop, 2.0, 'leaves_oak');
+   506→    // Top layer (smallest)
+   507→    this.placeLeafCluster(set, 0, 0, canopyTop + 2, 1.5, 'leaves_oak');
+   508→
+   509→    // Top crown
+   510→    set(0, 0, canopyTop + 3, 'leaves_oak');
+   511→    set(1, 0, canopyTop + 3, 'leaves_oak');
+   512→    set(-1, 0, canopyTop + 3, 'leaves_oak');
+   513→    set(0, 1, canopyTop + 3, 'leaves_oak');
+   514→    set(0, -1, canopyTop + 3, 'leaves_oak');
+   515→  }
+   516→
+   517→  // Pine: tall narrow trunk + conical canopy (Christmas tree shape)
+   518→  makePineTree(set: (ox: number, oz: number, y: number, b: BlockType) => void, baseY: number, s1: number, s2: number, s3: number) {
+   519→    const trunkHeight = 8 + Math.floor(s1 * 6); // 8-13 blocks - tall
+   520→    for (let i = 0; i < trunkHeight; i++) {
+   521→      set(0, 0, baseY + i, 'wood_pine');
+   522→    }
+   523→
+   524→    // Conical canopy - layers going up, each smaller than below
+   525→    const canopyTop = baseY + trunkHeight;
+   526→    const canopyBottom = baseY + Math.floor(trunkHeight * 0.4); // canopy starts halfway up
+   527→    const totalLayers = canopyTop - canopyBottom + 1;
+   528→    const maxRadius = Math.max(2.5, totalLayers * 0.4);
+   529→
+   530→    let layerIdx = 0;
+   531→    for (let y = canopyBottom; y <= canopyTop; y++) {
+   532→      // Each layer tapers
+   533→      const t = layerIdx / Math.max(1, totalLayers - 1); // 0 at bottom, 1 at top
+   534→      const radius = maxRadius * (1 - t * 0.85) + 0.5;
+   535→      this.placeLeafCluster(set, 0, 0, y, radius, 'leaves_pine');
+   536→      layerIdx++;
+   537→    }
+   538→
+   539→    // Tip
+   540→    set(0, 0, canopyTop + 1, 'leaves_pine');
+   541→  }
+   542→
+   543→  // Spruce: similar to pine but wider, denser, more conical with droopy branches
+   544→  makeSpruceTree(set: (ox: number, oz: number, y: number, b: BlockType) => void, baseY: number, s1: number, s2: number, s3: number) {
+   545→    const trunkHeight = 7 + Math.floor(s1 * 5); // 7-11 blocks
+   546→    for (let i = 0; i < trunkHeight; i++) {
+   547→      set(0, 0, baseY + i, 'wood_spruce');
+   548→    }
+   549→
+   550→    const canopyTop = baseY + trunkHeight;
+   551→    const canopyBottom = baseY + 1;
+   552→    const totalLayers = canopyTop - canopyBottom + 1;
+   553→    const maxRadius = Math.max(2.8, totalLayers * 0.42);
+   554→
+   555→    let layerIdx = 0;
+   556→    for (let y = canopyBottom; y <= canopyTop; y++) {
+   557→      const t = layerIdx / Math.max(1, totalLayers - 1);
+   558→      // Spruce has a more gradual taper with slight bulges (droopy branches)
+   559→      const droop = Math.sin(t * Math.PI * 3) * 0.3;
+   560→      const radius = maxRadius * (1 - t * 0.85) + droop + 0.5;
+   561→      this.placeLeafCluster(set, 0, 0, y, radius, 'leaves_spruce');
+   562→      layerIdx++;
+   563→    }
+   564→
+   565→    set(0, 0, canopyTop + 1, 'leaves_spruce');
+   566→  }
+   567→
+   568→  // Birch: thin white-bark trunk, small sparse canopy
+   569→  makeBirchTree(set: (ox: number, oz: number, y: number, b: BlockType) => void, baseY: number, s1: number, s2: number, s3: number) {
+   570→    const trunkHeight = 6 + Math.floor(s1 * 4); // 6-9 blocks
+   571→    for (let i = 0; i < trunkHeight; i++) {
+   572→      set(0, 0, baseY + i, 'wood_birch');
+   573→    }
+   574→
+   575→    const canopyTop = baseY + trunkHeight;
+   576→    // Two smaller, distinct leaf clusters
+   577→    this.placeLeafCluster(set, 0, 0, canopyTop - 1, 1.5, 'leaves_birch');
+   578→    this.placeLeafCluster(set, 0, 0, canopyTop + 1, 2.0, 'leaves_birch');
+   579→    this.placeLeafCluster(set, 0, 0, canopyTop + 2, 1.0, 'leaves_birch');
+   580→
+   581→    // Side leaves
+   582→    set(2, 0, canopyTop, 'leaves_birch');
+   583→    set(-2, 0, canopyTop, 'leaves_birch');
+   584→    set(0, 2, canopyTop, 'leaves_birch');
+   585→    set(0, -2, canopyTop, 'leaves_birch');
+   586→
+   587→    // Top
+   588→    set(0, 0, canopyTop + 3, 'leaves_birch');
+   589→  }
+   590→
+   591→  // Autumn Oak: like oak but with autumn leaves (yellow/orange/red mix)
+   592→  makeAutumnOakTree(set: (ox: number, oz: number, y: number, b: BlockType) => void, baseY: number, s1: number, s2: number, s3: number) {
+   593→    const trunkHeight = 5 + Math.floor(s1 * 4);
+   594→    for (let i = 0; i < trunkHeight; i++) {
+   595→      set(0, 0, baseY + i, 'wood_oak');
+   596→    }
+   597→
+   598→    // Branches
+   599→    const numBranches = 2 + Math.floor(s2 * 3);
+   600→    for (let i = 0; i < numBranches; i++) {
+   601→      const branchY = baseY + 2 + Math.floor(s1 * (trunkHeight - 3)) + i;
+   602→      const dir = Math.floor(s2 * 4);
+   603→      const dx = [1, -1, 0, 0][dir];
+   604→      const dz = [0, 0, 1, -1][dir];
+   605→      const branchLen = 1 + Math.floor(s3 * 2);
+   606→      for (let j = 1; j <= branchLen; j++) {
+   607→        set(dx * j, dz * j, branchY, 'wood_oak');
+   608→      }
+   609→      this.placeLeafCluster(set, dx * branchLen, dz * branchLen, branchY + 1, 1.5, this.pickAutumnLeaf(s2 + i * 0.3));
+   610→    }
+   611→
+   612→    const canopyTop = baseY + trunkHeight;
+   613→    this.placeLeafCluster(set, 0, 0, canopyTop - 2, 2.5, this.pickAutumnLeaf(s1));
+   614→    this.placeLeafCluster(set, 0, 0, canopyTop, 2.0, this.pickAutumnLeaf(s2));
+   615→    this.placeLeafCluster(set, 0, 0, canopyTop + 2, 1.5, this.pickAutumnLeaf(s3));
+   616→
+   617→    const topLeaf = this.pickAutumnLeaf(s1 + 0.5);
+   618→    set(0, 0, canopyTop + 3, topLeaf);
+   619→    set(1, 0, canopyTop + 3, topLeaf);
+   620→    set(-1, 0, canopyTop + 3, topLeaf);
+   621→    set(0, 1, canopyTop + 3, topLeaf);
+   622→    set(0, -1, canopyTop + 3, topLeaf);
+   623→  }
+   624→
+   625→  pickAutumnLeaf(r: number): BlockType {
+   626→    if (r > 0.75) return 'leaves_autumn_red';
+   627→    if (r > 0.45) return 'leaves_autumn_orange';
+   628→    if (r > 0.2) return 'leaves_autumn_yellow';
+   629→    return 'leaves_autumn_mixed';
+   630→  }
+   631→
+   632→  // Autumn Birch: like birch but with autumn yellow/orange leaves
+   633→  makeAutumnBirchTree(set: (ox: number, oz: number, y: number, b: BlockType) => void, baseY: number, s1: number, s2: number, s3: number) {
+   634→    const trunkHeight = 6 + Math.floor(s1 * 4);
+   635→    for (let i = 0; i < trunkHeight; i++) {
+   636→      set(0, 0, baseY + i, 'wood_birch');
+   637→    }
+   638→
+   639→    const canopyTop = baseY + trunkHeight;
+   640→    const leafType = s2 > 0.5 ? 'leaves_autumn_yellow' : 'leaves_autumn_orange';
+   641→    this.placeLeafCluster(set, 0, 0, canopyTop - 1, 1.5, leafType);
+   642→    this.placeLeafCluster(set, 0, 0, canopyTop + 1, 2.0, leafType);
+   643→    this.placeLeafCluster(set, 0, 0, canopyTop + 2, 1.0, leafType);
+   644→
+   645→    set(2, 0, canopyTop, leafType);
+   646→    set(-2, 0, canopyTop, leafType);
+   647→    set(0, 2, canopyTop, leafType);
+   648→    set(0, -2, canopyTop, leafType);
+   649→    set(0, 0, canopyTop + 3, leafType);
+   650→  }
+   651→
+   652→  // Willow: droopy, hanging canopy
+   653→  makeWillowTree(set: (ox: number, oz: number, y: number, b: BlockType) => void, baseY: number, s1: number, s2: number, s3: number) {
+   654→    const trunkHeight = 4 + Math.floor(s1 * 3);
+   655→    for (let i = 0; i < trunkHeight; i++) {
+   656→      set(0, 0, baseY + i, 'wood_oak');
+   657→    }
+   658→
+   659→    const canopyTop = baseY + trunkHeight;
+   660→    // Wide flat canopy at top
+   661→    this.placeLeafCluster(set, 0, 0, canopyTop, 2.5, 'leaves_willow');
+   662→    this.placeLeafCluster(set, 0, 0, canopyTop + 1, 2.0, 'leaves_willow');
+   663→
+   664→    // Drooping leaves hanging down around the edges
+   665→    for (let angle = 0; angle < 8; angle++) {
+   666→      const a = (angle / 8) * Math.PI * 2;
+   667→      const dx = Math.round(Math.cos(a) * 2);
+   668→      const dz = Math.round(Math.sin(a) * 2);
+   669→      // Hang down 2-3 blocks
+   670→      const hang = 2 + Math.floor(s2 * 2);
+   671→      for (let i = 0; i < hang; i++) {
+   672→        set(dx, dz, canopyTop - i, 'leaves_willow');
+   673→      }
+   674→    }
+   675→    // Top
+   676→    set(0, 0, canopyTop + 2, 'leaves_willow');
+   677→  }
+   678→
+   679→  // Place a roughly circular cluster of leaves at (ox, oz, y) with given radius
+   680→  placeLeafCluster(
+   681→    set: (ox: number, oz: number, y: number, b: BlockType) => void,
+   682→    ox: number,
+   683→    oz: number,
+   684→    y: number,
+   685→    radius: number,
+   686→    leafType: BlockType,
+   687→  ) {
+   688→    const r = Math.ceil(radius);
+   689→    for (let dz = -r; dz <= r; dz++) {
+   690→      for (let dx = -r; dx <= r; dx++) {
+   691→        const d = Math.sqrt(dx * dx + dz * dz);
+   692→        if (d <= radius + 0.3) {
+   693→          // Don't overwrite trunk at the very base
+   694→          // (we check if (dx, dz) == (0,0) and skip if it's a wood block)
+   695→          // Actually, leaves overwriting trunk mid-canopy is fine.
+   696→          set(ox + dx, oz + dz, y, leafType);
+   697→        }
+   698→      }
+   699→    }
+   700→  }
+   701→
+   702→  isSolid(x: number, y: number, z: number): boolean {
+   703→    const bt = this.getBlock(Math.floor(x), Math.floor(y), Math.floor(z));
+   704→    const def = BLOCKS[bt];
+   705→    return def.solid;
+   706→  }
+   707→
+   708→  findSpawn(): { x: number; y: number; z: number } {
+   709→    // Scan outward in a spiral and pick the most open grassy position
+   710→    // Prefer autumn forest biome (biomeId 6) for the lush Lay-of-the-Land-style forest feel
+   711→    const candidates: { x: number; y: number; z: number; treeScore: number; surfaceType: number; biomeScore: number }[] = [];
+   712→
+   713→    for (let attempt = 0; attempt < 400; attempt++) {
+   714→      // Spiral outward from origin
+   715→      const angle = attempt * 0.4;
+   716→      const radius = Math.floor(attempt * 1.5);
+   717→      const x = Math.round(Math.cos(angle) * radius);
+   718→      const z = Math.round(Math.sin(angle) * radius);
+   719→
+   720→      const biomeId = this.getBiomeAt(x, z);
+   721→      // Skip desert (2), mountains (4), water/sea level
+   722→      if (biomeId === 2 || biomeId === 4) continue;
+   723→
+   724→      for (let y = this.worldHeight - 1; y >= 2; y--) {
+   725→        const bt = this.getBlock(x, y, z);
+   726→        const above = this.getBlock(x, y + 1, z);
+   727→        const above2 = this.getBlock(x, y + 2, z);
+   728→        const def = BLOCKS[bt];
+   729→        const isGround = def.solid && bt !== 'water' && !def.isLeaves && !def.isWood && bt !== 'magma';
+   730→        if (isGround && above === 'air' && above2 === 'air') {
+   731→          // Prefer grass surface, then dirt/sand, avoid stone-only mountains
+   732→          let surfaceScore = 0;
+   733→          if (bt === 'grass' || bt === 'grass_spring' || bt === 'grass_autumn') surfaceScore = 0;
+   734→          else if (bt === 'dirt' || bt === 'dirt_path' || bt === 'sand' || bt === 'snow_grass') surfaceScore = 1;
+   735→          else if (bt === 'snow') surfaceScore = 2;
+   736→          else if (bt === 'stone' || bt === 'cobblestone' || bt === 'granite' || bt === 'slate') surfaceScore = 5;
+   737→          else surfaceScore = 3;
+   738→
+   739→          // Biome preference: autumn forest (6) is best, then forest (1), taiga (5), then plains (0)
+   740→          let biomeScore = 0;
+   741→          if (biomeId === 6) biomeScore = 0;       // autumn forest - best
+   742→          else if (biomeId === 1) biomeScore = 1;  // forest
+   743→          else if (biomeId === 5) biomeScore = 2;  // taiga
+   744→          else if (biomeId === 0) biomeScore = 3;  // plains
+   745→          else if (biomeId === 7) biomeScore = 4;  // swamp
+   746→          else if (biomeId === 3) biomeScore = 5;  // snow
+   747→          else biomeScore = 6;
+   748→
+   749→          // Check if there are trees nearby (within 7 blocks horizontally)
+   750→          let treeScore = 0;
+   751→          for (let dx = -7; dx <= 7; dx++) {
+   752→            for (let dz = -7; dz <= 7; dz++) {
+   753→              for (let dy = 0; dy <= 12; dy++) {
+   754→                const nb = this.getBlock(x + dx, y + 1 + dy, z + dz);
+   755→                const ndef = BLOCKS[nb];
+   756→                if (ndef.isLeaves || ndef.isWood) {
+   757→                  // Weight closer trees higher
+   758→                  const dist = Math.sqrt(dx * dx + dz * dz);
+   759→                  treeScore += dist < 3 ? 10 : dist < 5 ? 3 : 1;
+   760→                }
+   761→              }
+   762→            }
+   763→          }
+   764→          candidates.push({ x: x + 0.5, y: y + 1.5, z: z + 0.5, treeScore, surfaceType: surfaceScore, biomeScore });
+   765→          if (candidates.length >= 50) break;
+   766→        }
+   767→      }
+   768→      if (candidates.length >= 50) break;
+   769→    }
+   770→
+   771→    if (candidates.length > 0) {
+   772→      // Sort: best biome first, then grass surface, then moderate treeScore (some trees in distance, not on player)
+   773→      candidates.sort((a, b) => {
+   774→        if (a.biomeScore !== b.biomeScore) return a.biomeScore - b.biomeScore;
+   775→        if (a.surfaceType !== b.surfaceType) return a.surfaceType - b.surfaceType;
+   776→        // Prefer moderate treeScore (visible distant trees but not too close)
+   777→        const scoreA = Math.abs(a.treeScore - 25);
+   778→        const scoreB = Math.abs(b.treeScore - 25);
+   779→        return scoreA - scoreB;
+   780→      });
+   781→      return { x: candidates[0].x, y: candidates[0].y, z: candidates[0].z };
+   782→    }
+   783→
+   784→    // Fallback - find highest solid in column 0,0
+   785→    for (let y = this.worldHeight - 1; y >= 1; y--) {
+   786→      const bt = this.getBlock(0, y, 0);
+   787→      if (bt !== 'air' && bt !== 'water' && bt !== 'magma' && BLOCKS[bt].solid) {
+   788→        return { x: 0.5, y: y + 1.5, z: 0.5 };
+   789→      }
+   790→    }
+   791→    return { x: 0.5, y: this.seaLevel + 2, z: 0.5 };
+   792→  }
+   793→
+   794→  raycast(
+   795→    origin: { x: number; y: number; z: number },
+   796→    dir: { x: number; y: number; z: number },
+   797→    maxDistance: number,
+   798→  ): {
+   799→    hit: boolean;
+   800→    block: { x: number; y: number; z: number };
+   801→    normal: { x: number; y: number; z: number };
+   802→    blockType: BlockType;
+   803→  } {
+   804→    const ox = origin.x;
+   805→    const oy = origin.y;
+   806→    const oz = origin.z;
+   807→
+   808→    let x = Math.floor(ox);
+   809→    let y = Math.floor(oy);
+   810→    let z = Math.floor(oz);
+   811→
+   812→    const stepX = dir.x > 0 ? 1 : -1;
+   813→    const stepY = dir.y > 0 ? 1 : -1;
+   814→    const stepZ = dir.z > 0 ? 1 : -1;
+   815→
+   816→    const tDeltaX = Math.abs(1 / dir.x);
+   817→    const tDeltaY = Math.abs(1 / dir.y);
+   818→    const tDeltaZ = Math.abs(1 / dir.z);
+   819→
+   820→    const nextBoundaryX = x + (stepX > 0 ? 1 : 0);
+   821→    const nextBoundaryY = y + (stepY > 0 ? 1 : 0);
+   822→    const nextBoundaryZ = z + (stepZ > 0 ? 1 : 0);
+   823→
+   824→    let tMaxX = (nextBoundaryX - ox) / dir.x;
+   825→    let tMaxY = (nextBoundaryY - oy) / dir.y;
+   826→    let tMaxZ = (nextBoundaryZ - oz) / dir.z;
+   827→    if (!isFinite(tMaxX)) tMaxX = Infinity;
+   828→    if (!isFinite(tMaxY)) tMaxY = Infinity;
+   829→    if (!isFinite(tMaxZ)) tMaxZ = Infinity;
+   830→
+   831→    let normal = { x: 0, y: 0, z: 0 };
+   832→    let t = 0;
+   833→
+   834→    while (t <= maxDistance) {
+   835→      const bt = this.getBlock(x, y, z);
+   836→      const def = BLOCKS[bt];
+   837→      if (bt !== 'air' && bt !== 'water' && def.solid) {
+   838→        return {
+   839→          hit: true,
+   840→          block: { x, y, z },
+   841→          normal,
+   842→          blockType: bt,
+   843→        };
+   844→      }
+   845→      if (tMaxX < tMaxY && tMaxX < tMaxZ) {
+   846→        x += stepX;
+   847→        t = tMaxX;
+   848→        tMaxX += tDeltaX;
+   849→        normal = { x: -stepX, y: 0, z: 0 };
+   850→      } else if (tMaxY < tMaxZ) {
+   851→        y += stepY;
+   852→        t = tMaxY;
+   853→        tMaxY += tDeltaY;
+   854→        normal = { x: 0, y: -stepY, z: 0 };
+   855→      } else {
+   856→        z += stepZ;
+   857→        t = tMaxZ;
+   858→        tMaxZ += tDeltaZ;
+   859→        normal = { x: 0, y: 0, z: -stepZ };
+   860→      }
+   861→    }
+   862→
+   863→    return {
+   864→      hit: false,
+   865→      block: { x: 0, y: 0, z: 0 },
+   866→      normal: { x: 0, y: 0, z: 0 },
+   867→      blockType: 'air',
+   868→    };
+   869→  }
+   870→
+   871→  getBiomeAt(x: number, z: number): number {
+   872→    const cont = fbm2D(x * 0.005, z * 0.005, this.seed, 2);
+   873→    const hills = fbm2D(x * 0.02, z * 0.02, this.seed + 1000, 2);
+   874→    const mountains = Math.pow(fbm2D(x * 0.008, z * 0.008, this.seed + 5000, 2), 2);
+   875→    let baseHeight = this.seaLevel + 4;
+   876→    baseHeight += (cont - 0.5) * 16;
+   877→    baseHeight += (hills - 0.5) * 8;
+   878→    baseHeight += mountains * 28;
+   879→    const temp = fbm2D(x * 0.003, z * 0.003, this.seed + 9000, 2);
+   880→    const humid = fbm2D(x * 0.003, z * 0.003, this.seed + 13000, 2);
+   881→    const foliage = fbm2D(x * 0.006, z * 0.006, this.seed + 17000, 2);
+   882→    return this.getBiome(temp, humid, baseHeight, foliage);
+   883→  }
+   884→}
+   885→

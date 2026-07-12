@@ -1,0 +1,31 @@
+{
+  "name": "list_metadata_templates",
+  "description": "Lists available Box metadata templates so you can discover scope and templateKey for search_files_metadata. Use this first to find templates, then get_metadata_template_schema to get field keys. Call with scope \"enterprise\" for your org's templates or \"global\" for Box global templates.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "scope": {
+        "type": "string",
+        "enum": [
+          "enterprise",
+          "global"
+        ]
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 1000,
+        "description": "Max number of templates to return (default 1000)."
+      },
+      "marker": {
+        "type": "string",
+        "description": "Pagination marker from a previous response."
+      }
+    },
+    "required": [
+      "scope"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

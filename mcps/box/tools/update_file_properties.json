@@ -1,0 +1,55 @@
+{
+  "name": "update_file_properties",
+  "description": "Updates file metadata: name, description, tags, and collections.\n\n**Updatable fields:**\n- `name` - File name with extension (max 255 chars). **IMPORTANT: Always preserve the original file extension unless explicitly instructed to change it.**\n- `description` - File description (max 256 chars)\n- `tags` - Tags array (max 100)\n- `collections` - Collections array with format [{\"id\": \"collection_id\"}]\n\n<examples>\nRename file:\n<input>{\"file_id\": \"123456789\", \"name\": \"Q1-Report-2024.pdf\"}</input>\n\nUpdate description and tags:\n<input>\n{\n  \"file_id\": \"987654321\",\n  \"description\": \"Q1 2024 financial report\",\n  \"tags\": [\"finance\", \"2024\"]\n}\n</input>\n\nMultiple updates:\n<input>\n{\n  \"file_id\": \"444555666\",\n  \"name\": \"Updated-Doc.docx\",\n  \"tags\": [\"project\"],\n  \"collections\": [{\"id\": \"98765\"}]\n}\n</input>\n</examples>",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "file_id": {
+        "type": "string",
+        "maxLength": 255,
+        "pattern": "^\\d+$",
+        "description": "The unique identifier of the file to update"
+      },
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 255,
+        "description": "New name for the file (including extension)"
+      },
+      "description": {
+        "type": "string",
+        "maxLength": 256,
+        "description": "New description for the file"
+      },
+      "tags": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 100,
+        "description": "Array of tags to apply to the file"
+      },
+      "collections": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "additionalProperties": false
+        },
+        "description": "Array of collection objects with IDs to add the file to"
+      }
+    },
+    "required": [
+      "file_id"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

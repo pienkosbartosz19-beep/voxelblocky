@@ -1,0 +1,24 @@
+{
+  "name": "get_preview_page",
+  "description": "Use when user asks follow-up question to a file previewed with get_file_preview (\"Explain this...\", \"What does ____ mean?\")Returns the current preview page as an image so you can analyze it (figures, text, charts, etc.). You cannot see the page content until you call this tool.\n\nRequired workflow:\n1. Find the file preview context in the conversation. The preview widget sends it as content like: \"Current file preview: fileId=123, fileName=doc.pdf, currentPage=3. Use get_preview_page with this fileId and currentPage...\". Look for this before calling.\n2. Extract fileId and currentPage from that context. If the user asks about \"this page\", \"these figures\", \"what's on the page\", use currentPage from the context. If they name a page (e.g. \"page 7\"), use that number instead.\n3. Call get_preview_page(fileId, currentPage) to fetch the page image. You must call this tool to see the page—there is no other way to view its content.\n4. Use the returned image to answer the user's question.\n\nDo not call with a fileId or page from elsewhere. If no file preview context is present (no \"Current file preview: fileId=...\" in the conversation), do not call. Supported extensions: ai, bmp, cr2, crw, csv, dng, doc, docx, dwg, eml, eps, gdoc, gif, gsheet, gslide, gslides, heic, htm, html, idml, indd, indt, inx, jpeg, jpg, key, nef, numbers, odp, ods, odt, pages, pdf, png, ppt, pptx, ps, psd, raf, raw, rtf, svg, svs, tga, tif, tiff, tsv, webp, wpd, xhtml, xls, xlsm, xlsx.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "fileId": {
+        "type": "string",
+        "description": "The Box file ID"
+      },
+      "page": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "The 1-based page number to return as PNG"
+      }
+    },
+    "required": [
+      "fileId",
+      "page"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "name": "search_files_metadata",
+  "description": "Searches for files using SQL-like metadata queries. Requires: from (e.g. enterprise_123456.templateKey from list_metadata_templates), fields (field keys from get_metadata_template_schema). ancestor_folder_id defaults to \"0\" (root) if omitted. Use list_metadata_templates and get_metadata_template_schema first to discover templates and field keys.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "from": {
+        "type": "string",
+        "minLength": 1
+      },
+      "query": {
+        "type": "string",
+        "minLength": 1
+      },
+      "query_params": {
+        "type": "object",
+        "additionalProperties": {}
+      },
+      "ancestor_folder_id": {
+        "type": "string"
+      },
+      "fields": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "default": 30
+      }
+    },
+    "required": [
+      "from",
+      "query"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

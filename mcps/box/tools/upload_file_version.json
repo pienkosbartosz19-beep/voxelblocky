@@ -1,0 +1,23 @@
+{
+  "name": "upload_file_version",
+  "description": "Upload new file version by providing the entire file contents to Box. This tool updates an existing file's version in Box using the given file ID and content. The file ID must correspond to an existing file; otherwise, an error will be returned. Upon success, the metadata details of the updated file version are returned in the response.\n\n**Key Feature:**\n- Update file version with text content\n\n**Important:** This tool can only accept text content, to upload binary files, use the `get_upload_url` tool instead.\n\n<examples>\nupload a new file version in Box:\n{\n  \"file_id\": \"123\",\n  \"file_content\": \"#This is my example markdown file\",\n}\n<output>\n{\n  \"content\": [\n    {\n      \"type\": \"text\",\n      \"text\": \"{\"file_id\": \"123\", \"file_name\": \"example.md\", \"size\": 100, \"created_at\": \"2025-01-01T00:00:00Z\"}\"\n    }\n  ]\n}\n</output>\n</examples>",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "file_id": {
+        "type": "string",
+        "minLength": 1
+      },
+      "file_content": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "file_id",
+      "file_content"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

@@ -1,0 +1,108 @@
+{
+  "name": "search_files_keyword",
+  "description": "Searches for files using keywords and supports metadata filters, file extension filtering (without dots), and field selection. Maps to Box's searchForContent API with comprehensive filtering capabilities.\n\nThe response always includes core fields: id, name, description, type, and size. Each entry also includes `url` (Box web link for files and folders; web links use the API `url` when returned). The 'fields' parameter allows you to request additional fields beyond these core ones. All requested fields (core + additional) will be included in the API request and returned in the response.\n\n**Available Additional Fields:**\nfileVersion, sha1, contentCreatedAt, contentModifiedAt, createdAt, createdBy, modifiedAt, modifiedBy, ownedBy, parent, pathCollection, purgedAt, sharedLink, size, trashedAt, classification, commentCount, dispositionAt, expiresAt, extension, hasCollaborations, isAccessibleViaSharedLink, isAssociatedWithAppItem, isExternallyOwned, isPackage, lock, metadata, permissions, representations, sharedLinkPermissionOptions, tags, uploaderDisplayName, watermarkInfo\n\n**Date Range Filters:**\nDate range filters properties of the input schema: created_at_range, updated_at_range, deleted_at_range. Use comma-separated RFC3339 timestamps.\n\n**Format:** \"start_date,end_date\" where:\n- Omit start date to search all items before end date: \",2023-12-31T23:59:59Z\"\n- Omit end date to search from start date to the present: \"2023-01-01T00:00:00Z,\"\n- Both dates for specific range: \"2023-01-01T00:00:00Z,2023-12-31T23:59:59Z\"\n\n<examples>\nBasic keyword search (returns core fields only):\n<input>\n{\n  \"query\": \"contract agreement\",\n  \"limit\": 50\n}\n</input>\n\nAdvanced search with additional fields:\n<input>\n{\n  \"query\": \"quarterly report\",\n  \"file_extensions\": [\"pdf\", \"docx\"],\n  \"ancestor_folder_id\": \"123456789\",\n  \"fields\": [\"createdAt\", \"modifiedAt\", \"size\", \"createdBy\"]\n}\n</input>\n\nSearching by date:\n<input>\n{\n  \"query\": \"quarterly report\",\n  \"file_extensions\": [\"pdf\", \"docx\"],\n  \"ancestor_folder_id\": \"123456789\",\n  \"created_at_range”: \"2023-01-01T00:00:00Z,2023-12-31T23:59:59Z\",\n  \"fields\": [\"createdAt\"]\n}\n</input>\n\nSearch with metadata filters and additional fields:\n<input>\n{\n  \"query\": \"invoice\",\n  \"file_extensions\": [\"pdf\"],\n  \"limit\": 30,\n  \"fields\": [\"contentCreatedAt\", \"pathCollection\", \"metadata\"],\n  \"mdfilters\": [\n    {\n      \"scope\": \"enterprise\",\n      \"templateKey\": \"invoiceTemplate\",\n      \"filters\": {\n        \"amount\": {\n          \"gt\": 1000,\n          \"lt\": 5000\n        },\n        \"status\": \"approved\",\n        \"department\": \"finance\"\n      }\n    }\n  ]\n}\n</input>\n\nMulti-template metadata search with custom fields:\n<input>\n{\n  \"query\": \"project document\",\n  \"fields\": [\"modifiedBy\", \"sharedLink\", \"tags\", \"permissions\"],\n  \"mdfilters\": [\n    {\n      \"scope\": \"enterprise\", \n      \"templateKey\": \"projectTemplate\",\n      \"filters\": {\n        \"priority\": \"high\",\n        \"deadline\": {\n          \"gt\": \"2024-01-01\"\n        }\n      }\n    },\n    {\n      \"scope\": \"global\",\n      \"templateKey\": \"reviewTemplate\", \n      \"filters\": {\n        \"reviewer\": \"john.doe@company.com\"\n      }\n    }\n  ]\n}\n</input>\n</examples>",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "minLength": 1
+      },
+      "ancestor_folder_id": {
+        "type": "string"
+      },
+      "file_extensions": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "fields": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 200,
+        "default": 30
+      },
+      "mdfilters": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "scope": {
+              "type": "string"
+            },
+            "templateKey": {
+              "type": "string"
+            },
+            "filters": {
+              "type": "object",
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "gt": {
+                        "type": [
+                          "string",
+                          "number"
+                        ]
+                      },
+                      "lt": {
+                        "type": [
+                          "string",
+                          "number"
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            }
+          },
+          "required": [
+            "scope",
+            "templateKey"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "created_at_range": {
+        "type": "string",
+        "maxLength": 100
+      },
+      "updated_at_range": {
+        "type": "string",
+        "maxLength": 100
+      },
+      "deleted_at_range": {
+        "type": "string",
+        "maxLength": 100
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

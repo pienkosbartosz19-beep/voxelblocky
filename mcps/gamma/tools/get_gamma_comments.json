@@ -1,0 +1,36 @@
+{
+  "name": "get_gamma_comments",
+  "description": "Lists comment threads on an existing Gamma presentation or document, including their replies. Use this when the user wants to read, review, or summarize the comments or feedback on a Gamma. Requires the Gamma file ID or URL. Results are paginated, oldest activity first; use `after` with the `nextCursor` from a previous response to fetch the next page. Use `updatedSince` (ISO-8601 timestamp) to fetch only threads with activity after a given time.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "gammaIdOrUrl": {
+        "type": "string",
+        "description": "The Gamma file ID or a full Gamma URL. Examples: \"g5aykcic8ujm71s\" or \"https://gamma.app/docs/My-Deck-g5aykcic8ujm71s\"."
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 50,
+        "description": "Maximum number of comment threads to return per page (optional, defaults to 50, max 50)"
+      },
+      "after": {
+        "type": "string",
+        "description": "Cursor from a previous response to fetch the next page (optional). When paginating, keep the other parameters exactly the same as the call that produced the cursor; changing filters mid-pagination can cause skipped, duplicated, or inconsistent results."
+      },
+      "updatedSince": {
+        "type": "string",
+        "description": "ISO-8601 timestamp, e.g. \"2026-06-01T00:00:00.000Z\" (optional). When provided, only comment threads with activity (including new replies) after this timestamp are returned."
+      },
+      "includeArchived": {
+        "type": "boolean",
+        "description": "When true, archived (deleted) comments and replies are included in the results, each carrying an `archived` flag (optional, defaults to false)"
+      }
+    },
+    "required": [
+      "gammaIdOrUrl"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}
