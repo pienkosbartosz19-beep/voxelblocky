@@ -6,3 +6,6 @@ dist/
 .env
 *.log
 autosync.ps1
+next-env.d.ts
+tsconfig.tsbuildinfo
+*.tsbuildinfo
