@@ -61,6 +61,11 @@ main() {
             fi
         fi
     done
+
+    # 查找 ai-dolek 服务
+    if [ -f "$DIST_DIR/ai-dolek/index.js" ]; then
+        service_files="$service_files $DIST_DIR/ai-dolek/index.js"
+    fi
     
     # 计算服务文件数量
     service_count=0
