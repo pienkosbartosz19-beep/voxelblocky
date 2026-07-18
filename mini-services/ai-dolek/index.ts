@@ -1,11 +1,42 @@
 "use strict";
 
 import OpenAI from "openai";
-import { VectorStore } from "../../src/lib/vectorStore";
+import { FaissStore } from "@langchain/community/vectorstores/faiss";
+import { OpenAIEmbeddings } from "@langchain/openai";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+class LocalVectorStore {
+  private static instance: FaissStore;
+  private static embeddings: OpenAIEmbeddings;
+
+  private constructor() {}
+
+  public static async getInstance() {
+    if (!LocalVectorStore.instance) {
+      LocalVectorStore.embeddings = new OpenAIEmbeddings({
+        openAIApiKey: process.env.OPENAI_API_KEY,
+        model: "text-embedding-3-small",
+      });
+      try {
+        LocalVectorStore.instance = await FaissStore.load(
+          process.env.VECTOR_STORE_PATH || "./vector_store",
+          LocalVectorStore.embeddings
+        );
+      } catch {
+        LocalVectorStore.instance = new FaissStore(LocalVectorStore.embeddings, {});
+      }
+    }
+    return LocalVectorStore.instance;
+  }
+
+  public static async similaritySearch(query: string, k: number = 3) {
+    const instance = await LocalVectorStore.getInstance();
+    return instance.similaritySearch(query, k);
+  }
+}
 
 export class AIDolekGenerator {
   private static systemPrompt = `
@@ -95,7 +126,7 @@ export class AIDolekGenerator {
     platform: "linkedin" | "email" | "blog",
     queryForContext: string
   ): Promise<string> {
-    const contextDocs = await VectorStore.similaritySearch(queryForContext, 3);
+    const contextDocs = await LocalVectorStore.similaritySearch(queryForContext, 3);
     const context = contextDocs.map(doc => doc.pageContent).join("\n\n");
     return this.generateContent(prompt, platform, context);
   }
