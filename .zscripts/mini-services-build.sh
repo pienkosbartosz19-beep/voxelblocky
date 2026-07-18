@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # 配置项
-ROOT_DIR="/home/z/my-project/mini-services"
-DIST_DIR="/tmp/build_fullstack_$BUILD_ID/mini-services-dist"
+ROOT_DIR="./mini-services"
+DIST_DIR="./mini-services-dist"
 
 main() {
     echo "🚀 开始批量构建..."
