@@ -6,6 +6,14 @@ import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import { Document } from "langchain/document";
 import fs from "fs";
 import path from "path";
+import sharp from "sharp";
+import { pipeline } from "@xenova/transformers";
+
+// Inicjalizacja CLIP (model do wektoryzacji obrazów)
+const clipPipeline = await pipeline(
+  "feature-extraction",
+  "Xenova/clip-vit-base-patch32"
+);
 
 async function splitDocuments(documents: Document[]): Promise<Document[]> {
   const splitter = new RecursiveCharacterTextSplitter({
@@ -29,6 +37,35 @@ export async function loadText(filePath: string): Promise<Document[]> {
   return splitDocuments(docs);
 }
 
+// Nowa funkcja: Wektoryzacja obrazów (PNG/JPG)
+export async function loadImage(filePath: string): Promise<Document[]> {
+  // Konwersja obrazu do tensora (CLIP wymaga formatu 224x224)
+  const imageBuffer = await sharp(filePath)
+    .resize(224, 224)
+    .raw()
+    .toBuffer();
+
+  // Wektoryzacja obrazu (CLIP)
+  const imageEmbeddings = await clipPipeline(imageBuffer, {
+    pooling: "mean",
+    normalize: true,
+  });
+
+  // Konwersja tensora na tablicę liczb
+  const embedding = Array.from(imageEmbeddings.data);
+
+  return [
+    new Document({
+      pageContent: `[IMAGE] ${path.basename(filePath)}`, // Treść placeholder
+      metadata: {
+        source: filePath,
+        type: "image",
+        embedding, // Wektor embeddingów obrazu
+      },
+    }),
+  ];
+}
+
 export async function loadDirectory(directoryPath: string): Promise<Document[]> {
   const files = fs.readdirSync(directoryPath);
   let documents: Document[] = [];
@@ -42,6 +79,8 @@ export async function loadDirectory(directoryPath: string): Promise<Document[]> 
         documents = documents.concat(await loadPDF(filePath));
       } else if (file.endsWith(".txt") || file.endsWith(".md")) {
         documents = documents.concat(await loadText(filePath));
+      } else if (file.endsWith(".png") || file.endsWith(".jpg") || file.endsWith(".jpeg")) {
+        documents = documents.concat(await loadImage(filePath));
       }
     }
   }
