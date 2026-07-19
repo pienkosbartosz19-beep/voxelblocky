@@ -1,21 +1,21 @@
 "use server";
 
 import { FaissStore } from "@langchain/community/vectorstores/faiss";
-import { OpenAIEmbeddings } from "@langchain/openai";
+import { OllamaEmbeddings } from "@langchain/community/embeddings/ollama";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import { Document } from "langchain/document";
 
 export class VectorStore {
   private static instance: FaissStore;
-  private static embeddings: OpenAIEmbeddings;
+  private static embeddings: OllamaEmbeddings;
 
   private constructor() {}
 
   public static async getInstance() {
     if (!VectorStore.instance) {
-      VectorStore.embeddings = new OpenAIEmbeddings({
-        openAIApiKey: process.env.OPENAI_API_KEY,
-        model: "text-embedding-3-small",
+      VectorStore.embeddings = new OllamaEmbeddings({
+        model: "nomic-embed-text", // Lokalny model embeddingów
+        baseUrl: "http://localhost:11434", // Ollama
       });
       try {
         VectorStore.instance = await FaissStore.load(
