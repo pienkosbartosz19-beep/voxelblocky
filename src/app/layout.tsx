@@ -1,16 +1,12 @@
 import type { Metadata } from "next";
-import { GeistSans } from "@fontsource/geist/sans";
-import { GeistMono } from "@fontsource/geist/mono";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 
-const geistSans = {
-  variable: "--font-geist-sans",
-};
-
-const geistMono = {
-  variable: "--font-geist-mono",
-};
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+});
 
 export const metadata: Metadata = {
   title: "Wildlands Reborn - Voxel Survival",
@@ -26,7 +22,7 @@ export default function RootLayout({
   return (
     <html lang="pl" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
+        className={`${inter.variable} antialiased bg-background text-foreground`
       >
         {children}
         <Toaster />
