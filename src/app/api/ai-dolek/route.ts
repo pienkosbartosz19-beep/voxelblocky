@@ -1,6 +1,6 @@
 "use server";
 
-import { AIDolekGenerator } from "@/mini-services/ai-dolek";
+import { AIDolekGenerator } from "../../../../mini-services/ai-dolek";
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
