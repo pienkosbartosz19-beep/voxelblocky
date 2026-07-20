@@ -35,6 +35,8 @@ export async function POST(request: Request) {
           loadedDocs = await DocumentLoader.loadPDF(tempFilePath);
         } else if (fileName.endsWith(".txt") || fileName.endsWith(".md")) {
           loadedDocs = await DocumentLoader.loadText(tempFilePath);
+        } else if (fileName.endsWith(".png") || fileName.endsWith(".jpg") || fileName.endsWith(".jpeg")) {
+          loadedDocs = await DocumentLoader.loadImage(tempFilePath);
         } else {
           continue;
         }
