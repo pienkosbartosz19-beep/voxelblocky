@@ -4,23 +4,22 @@ import { z } from "zod";
 import path from "path";
 import fs from "fs";
 
-// Schema dla agenta (zgodne z lobe-chat-agents)
+// Schema dla agenta (zgodne z rzeczywistą strukturą lobe-chat-agents)
 const AgentSchema = z.object({
-  identifier: z.string(),
-  avatar: z.string().optional(),
-  backgroundColor: z.string().optional(),
-  description: z.string(),
+  config: z.object({
+    systemRole: z.string(),
+    openingMessage: z.string().optional(),
+    openingQuestions: z.array(z.string()).optional(),
+  }),
   meta: z.object({
     title: z.string(),
     description: z.string(),
     tags: z.array(z.string()).optional(),
   }),
-  systemRole: z.string(),
-  createAt: z.string().optional(),
-  updateAt: z.string().optional(),
+  summary: z.string().optional(),
 });
 
-type Agent = z.infer<typeof AgentSchema>;
+type Agent = z.infer<typeof AgentSchema> & { identifier: string };
 
 export class AgentRegistry {
   private static instance: AgentRegistry;
@@ -40,21 +39,26 @@ export class AgentRegistry {
 
   // Ładowanie agentów z lobe-chat-agents
   private async loadAgents() {
-    const agentsDir = path.join(
-      process.env.LOBE_AGENTS_PATH || "C:/Projects/lobe-chat-agents/locales",
-      "*",
-      "index.json"
-    );
+    const agentsDir = process.env.LOBE_AGENTS_PATH || "C:/Projects/lobe-chat-agents/locales";
 
-    const agentFiles = await fs.promises.glob(agentsDir);
-    for (const file of agentFiles) {
-      try {
-        const agentData = JSON.parse(await fs.promises.readFile(file, "utf-8"));
-        const agent = AgentSchema.parse(agentData);
-        this.agents.set(agent.identifier, agent);
-      } catch (err) {
-        console.error(`Failed to load agent from ${file}:`, err);
+    try {
+      const agentFolders = await fs.promises.readdir(agentsDir);
+      for (const folder of agentFolders) {
+        const indexPath = path.join(agentsDir, folder, "index.json");
+        try {
+          const stats = await fs.promises.stat(indexPath);
+          if (stats.isFile()) {
+            const agentData = JSON.parse(await fs.promises.readFile(indexPath, "utf-8"));
+            const agent = AgentSchema.parse(agentData);
+            const agentWithIdentifier = { ...agent, identifier: folder };
+            this.agents.set(folder, agentWithIdentifier);
+          }
+        } catch (err) {
+          // Ignoruj błędne pliki agentów
+        }
       }
+    } catch (err) {
+      console.error("Failed to load agents directory:", err);
     }
   }
 
@@ -63,7 +67,8 @@ export class AgentRegistry {
     const lowerQuery = query.toLowerCase();
     return Array.from(this.agents.values()).filter((agent) =>
       agent.meta.title.toLowerCase().includes(lowerQuery) ||
-      agent.meta.tags?.some(tag => tag.toLowerCase().includes(lowerQuery))
+      agent.meta.tags?.some(tag => tag.toLowerCase().includes(lowerQuery)) ||
+      agent.identifier.toLowerCase().includes(lowerQuery)
     );
   }
 
@@ -84,7 +89,7 @@ export class AgentRegistry {
 
     return `
     [SYSTEM ROLE]
-    ${agent.systemRole}
+    ${agent.config.systemRole}
 
     [USER INPUT]
     ${userInput}
