@@ -4,59 +4,43 @@ import { FaissStore } from "@langchain/community/vectorstores/faiss";
 import { OllamaEmbeddings } from "@langchain/community/embeddings/ollama";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import { Document } from "langchain/document";
-import { RedisVectorStore } from "@langchain/redis";
-import { createClient } from "redis";
+import { createHash } from "crypto";
+import { redis } from "./cache"; // Import z cache.ts
 
-// Konfiguracja Redis
-const redisClient = createClient({
-  url: process.env.REDIS_URL || "redis://localhost:6379",
+// Konfiguracja embeddings
+const embeddings = new OllamaEmbeddings({
+  model: "nomic-embed-text",
+  baseUrl: "http://localhost:11434",
 });
-redisClient.on("error", (err) => console.error("Redis Client Error", err));
-
-// Inicjalizacja klienta Redis (bez await, aby uniknąć blokowania)
-redisClient.connect().catch(console.error);
 
 export class VectorStore {
   private static faissInstance: FaissStore;
-  private static redisInstance: RedisVectorStore;
-  private static embeddings: OllamaEmbeddings;
 
   private constructor() {}
 
   // Inicjalizacja FAISS (główna pamięć wektorowa)
   private static async getFaissInstance() {
     if (!VectorStore.faissInstance) {
-      VectorStore.embeddings = new OllamaEmbeddings({
-        model: "nomic-embed-text",
-        baseUrl: "http://localhost:11434",
-      });
       try {
         VectorStore.faissInstance = await FaissStore.load(
           "./vector_store",
-          VectorStore.embeddings
+          embeddings
         );
       } catch {
-        VectorStore.faissInstance = new FaissStore(VectorStore.embeddings, {});
+        VectorStore.faissInstance = new FaissStore(embeddings, {});
       }
     }
     return VectorStore.faissInstance;
   }
 
-  // Inicjalizacja Redis (cache)
-  private static async getRedisInstance() {
-    if (!VectorStore.redisInstance) {
-      VectorStore.redisInstance = new RedisVectorStore(VectorStore.embeddings, {
-        indexName: "second_brain",
-        redisClient,
-        keyPrefix: "doc:",
-      });
-    }
-    return VectorStore.redisInstance;
+  // Generowanie klucza cache na podstawie zapytania
+  private static getCacheKey(query: string): string {
+    const hash = createHash("sha256").update(query).digest("hex");
+    return `embedding:${hash}`;
   }
 
   public static async addDocuments(documents: string[], metadata?: Record<string, any>[]) {
     const faissInstance = await VectorStore.getFaissInstance();
-    const redisInstance = await VectorStore.getRedisInstance();
     const splitter = new RecursiveCharacterTextSplitter({
       chunkSize: 512,
       chunkOverlap: 50,
@@ -70,48 +54,61 @@ export class VectorStore {
     );
 
     const chunks = await splitter.splitDocuments(docs);
-
-    // Zapis do FAISS (główna pamięć)
     await faissInstance.addDocuments(chunks);
     await faissInstance.save("./vector_store");
-
-    // Zapis do Redis (cache)
-    await redisInstance.addDocuments(chunks);
   }
 
   public static async similaritySearch(query: string, k: number = 3) {
-    const redisInstance = await VectorStore.getRedisInstance();
-
-    // Próba wyszukiwania w cache Redis (szybsze)
-    try {
-      const redisResults = await redisInstance.similaritySearch(query, k);
-      if (redisResults.length > 0) {
-        return redisResults;
-      }
-    } catch (err) {
-      console.warn("Redis cache miss, falling back to FAISS", err);
-    }
-
-    // Fallback do FAISS (główna pamięć)
-    const faissInstance = await VectorStore.getFaissInstance();
-    return faissInstance.similaritySearch(query, k);
-  }
-
-  public static async similaritySearchWithScore(query: string, k: number = 3) {
-    const redisInstance = await VectorStore.getRedisInstance();
+    const cacheKey = VectorStore.getCacheKey(query);
 
     // Próba wyszukiwania w cache Redis
     try {
-      const redisResults = await redisInstance.similaritySearchWithScore(query, k);
-      if (redisResults.length > 0) {
-        return redisResults;
+      const cachedResults = await redis.get(cacheKey);
+      if (cachedResults) {
+        return JSON.parse(cachedResults);
       }
     } catch (err) {
-      console.warn("Redis cache miss, falling back to FAISS", err);
+      console.warn("Redis cache error:", err);
     }
 
     // Fallback do FAISS
     const faissInstance = await VectorStore.getFaissInstance();
-    return faissInstance.similaritySearchWithScore(query, k);
+    const results = await faissInstance.similaritySearch(query, k);
+
+    // Zapis wyników do cache (TTL: 1h)
+    try {
+      await redis.setex(cacheKey, 3600, JSON.stringify(results));
+    } catch (err) {
+      console.warn("Failed to cache results in Redis:", err);
+    }
+
+    return results;
+  }
+
+  public static async similaritySearchWithScore(query: string, k: number = 3) {
+    const cacheKey = `${VectorStore.getCacheKey(query)}:with_score`;
+
+    // Próba wyszukiwania w cache Redis
+    try {
+      const cachedResults = await redis.get(cacheKey);
+      if (cachedResults) {
+        return JSON.parse(cachedResults);
+      }
+    } catch (err) {
+      console.warn("Redis cache error:", err);
+    }
+
+    // Fallback do FAISS
+    const faissInstance = await VectorStore.getFaissInstance();
+    const results = await faissInstance.similaritySearchWithScore(query, k);
+
+    // Zapis wyników do cache (TTL: 1h)
+    try {
+      await redis.setex(cacheKey, 3600, JSON.stringify(results));
+    } catch (err) {
+      console.warn("Failed to cache results in Redis:", err);
+    }
+
+    return results;
   }
 }
