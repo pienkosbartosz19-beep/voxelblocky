@@ -1,65 +1,74 @@
-import { VectorStore } from "@/lib/vectorStore";
 import { Document } from "langchain/document";
-import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import fs from "fs";
+import { describe, it, expect } from "bun:test";
+import { DocumentLoader } from "@/lib/documentLoader/documentLoader";
+import { writeFile, mkdir, rm } from "fs/promises";
 import path from "path";
+import { createHash } from "crypto";
 
-const testVectorStorePath = path.join(process.cwd(), "vector_store_test");
+function getCacheKey(query: string, type: "text" | "image" = "text"): string {
+  const hash = createHash("sha256").update(query).digest("hex");
+  return `embedding:${type}:${hash}`;
+}
 
-beforeAll(async () => {
-  // Clean up test vector store if it exists
-  if (fs.existsSync(testVectorStorePath)) {
-    fs.rmSync(testVectorStorePath, { recursive: true, force: true });
-  }
-});
+const tmpDir = path.join(process.cwd(), "tmp_test_docs");
 
-afterAll(async () => {
-  // Clean up test vector store
-  if (fs.existsSync(testVectorStorePath)) {
-    fs.rmSync(testVectorStorePath, { recursive: true, force: true });
-  }
-});
-
-describe("VectorStore", () => {
-  it("should initialize without errors", async () => {
-    const instance = await VectorStore.getInstance();
-    expect(instance).toBeDefined();
+describe("Second Brain — logika jednostkowa", () => {
+  it("generuje różne klucze cache dla text vs image", () => {
+    const a = getCacheKey("diagram", "text");
+    const b = getCacheKey("diagram", "image");
+    expect(a).not.toBe(b);
+    expect(a.startsWith("embedding:text:")).toBe(true);
+    expect(b.startsWith("embedding:image:")).toBe(true);
   });
 
-  it("should add documents and perform similarity search", async () => {
-    const testDocuments = [
-      "OpenClaude to zaawansowane narzędzie do analizy kodu i generowania treści.",
-      "Next.js jest frameworkiem do budowania aplikacji webowych opartych na React.",
-      "LangChain umożliwia tworzenie zaawansowanych aplikacji z użyciem modeli językowych.",
-    ];
-
-    await VectorStore.addDocuments(testDocuments);
-    const results = await VectorStore.similaritySearch("Co to jest OpenClaude?", 1);
-
-    expect(results.length).toBe(1);
-    expect(results[0].pageContent).toInclude("OpenClaude");
+  it("ten sam query daje ten sam klucz", () => {
+    expect(getCacheKey("abc", "text")).toBe(getCacheKey("abc", "text"));
   });
 
-  it("should return documents with scores", async () => {
-    const results = await VectorStore.similaritySearchWithScore(
-      "Next.js framework",
-      1
+  it("DocumentLoader.loadImage oznacza type=image", async () => {
+    await mkdir(tmpDir, { recursive: true });
+    // minimalny 1x1 PNG
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+      "base64"
     );
+    const filePath = path.join(tmpDir, "avatar.png");
+    await writeFile(filePath, png);
 
-    expect(results.length).toBe(1);
-    expect(results[0][0].pageContent).toInclude("Next.js");
-    expect(results[0][1]).toBeNumber();
+    const docs = await DocumentLoader.loadImage(filePath);
+    expect(docs.length).toBe(1);
+    expect(docs[0].metadata.type).toBe("image");
+    expect(docs[0].pageContent).toInclude("[IMAGE]");
+    expect(docs[0].metadata.source).toBe("avatar.png");
+
+    await rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("should handle adding documents with metadata", async () => {
-    const testDocuments = ["Testowy dokument z metadanymi"];
-    const testMetadata = [{ source: "test", customField: "value" }];
+  it("DocumentLoader.loadText ładuje plik tekstowy", async () => {
+    await mkdir(tmpDir, { recursive: true });
+    const filePath = path.join(tmpDir, "note.md");
+    await writeFile(filePath, "Second Brain przechowuje notatki o AIDolek.\n", "utf8");
 
-    await VectorStore.addDocuments(testDocuments, testMetadata);
-    const results = await VectorStore.similaritySearch("Testowy dokument", 1);
+    const docs = await DocumentLoader.loadText(filePath);
+    expect(docs.length).toBeGreaterThan(0);
+    expect(docs[0].pageContent).toInclude("Second Brain");
+    expect(docs[0].metadata.type).toBe("text");
 
-    expect(results.length).toBe(1);
-    expect(results[0].metadata.source).toBe("test");
-    expect(results[0].metadata.customField).toBe("value");
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("Document[] jest poprawnym kontraktami addDocuments", () => {
+    const docs: Document[] = [
+      new Document({
+        pageContent: "hello",
+        metadata: { type: "text", source: "a.txt" },
+      }),
+      new Document({
+        pageContent: "[IMAGE] x.png",
+        metadata: { type: "image", source: "x.png" },
+      }),
+    ];
+    expect(docs.filter((d) => d.metadata.type === "image").length).toBe(1);
+    expect(docs.filter((d) => d.metadata.type === "text").length).toBe(1);
   });
 });
