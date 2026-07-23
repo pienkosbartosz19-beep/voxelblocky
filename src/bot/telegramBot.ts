@@ -126,13 +126,13 @@ bot.catch((err, ctx) => {
   ctx.reply("Wystąpił błąd. Spróbuj ponownie.").catch(() => undefined);
 });
 
-// Start tylko gdy plik uruchamiany bezpośrednio (nie przy imporcie z Next)
+// Start przy bezpośrednim uruchomieniu (node/bun) lub RUN_TELEGRAM_BOT=1
 const isMain =
-  typeof require !== "undefined" &&
-  typeof module !== "undefined" &&
-  require.main === module;
+  process.env.RUN_TELEGRAM_BOT === "1" ||
+  (typeof process.argv[1] === "string" &&
+    process.argv[1].replace(/\\/g, "/").endsWith("telegramBot.ts"));
 
-if (isMain || process.env.RUN_TELEGRAM_BOT === "1") {
+if (isMain) {
   ensureAvatarDir()
     .then(() => bot.launch())
     .then(() => console.log("Telegram Bot uruchomiony"))
