@@ -88,11 +88,25 @@ export class AIDolekGenerator {
   static async generateWithContext(
     prompt: string,
     platform: "linkedin" | "email" | "blog",
-    queryForContext: string
+    contextResults: any[], // Wyniki z VectorStore.similaritySearch (Document[])
+    tone: "formal" | "casual" | "technical" = "casual"
   ): Promise<string> {
-    const contextDocs = await VectorStore.similaritySearch(queryForContext, 3);
-    const context = contextDocs.map(doc => doc.pageContent).join("\n\n");
-    return this.generateContent(prompt, platform, context);
+    // Przygotowanie kontekstu (tekst + obrazy)
+    let context = "";
+    for (const doc of contextResults) {
+      if (doc.metadata?.type === "image") {
+        // Dla obrazów: dodajemy opis do promptu
+        context += `\n\n[Obraz: ${doc.metadata.source}]`;
+        if (doc.metadata.description) {
+          context += ` przedstawia: ${doc.metadata.description}`;
+        }
+      } else {
+        // Dla tekstu: dodajemy pageContent
+        context += `\n\n${doc.pageContent}`;
+      }
+    }
+
+    return this.generateContent(prompt, platform, context, tone);
   }
 }
 

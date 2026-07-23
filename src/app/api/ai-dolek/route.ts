@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
   try {
-    const { prompt, platform, useContext, contextQuery, tone } = await request.json();
+    const { prompt, platform, useContext, contextQuery, contextType, tone } = await request.json();
 
     if (!prompt || !platform) {
       return NextResponse.json(
@@ -16,10 +16,18 @@ export async function POST(request: Request) {
 
     let content: string;
     if (useContext && contextQuery) {
+      // Wyszukiwanie kontekstu w Second Brain (multimodalne)
+      const contextResults = await VectorStore.similaritySearch(
+        contextQuery,
+        3,
+        contextType || "text" // Domyślnie tekst
+      );
+
       content = await AIDolekGenerator.generateWithContext(
         prompt,
         platform,
-        contextQuery
+        contextResults, // Przekazujemy wyniki wyszukiwania (tekst + obrazy)
+        tone
       );
     } else {
       content = await AIDolekGenerator.generateContent(
