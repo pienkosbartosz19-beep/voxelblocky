@@ -1,56 +1,82 @@
-"use server";
+import path from "path";
 
-import { pipeline } from "@xenova/transformers";
-import sharp from "sharp";
+type FeaturePipeline = (
+  input: unknown,
+  options?: { pooling?: string; normalize?: boolean }
+) => Promise<{ data: Float32Array | number[] }>;
 
-// Inicjalizacja CLIP (model do wektoryzacji obrazów)
-const clipPipeline = await pipeline(
-  "feature-extraction",
-  "Xenova/clip-vit-base-patch32"
-);
-
+/**
+ * Lazy CLIP embeddings — bez top-level await (bezpieczne dla Next.js).
+ * embedDocuments/embedQuery zgodne z interfejsem LangChain Embeddings.
+ */
 export class ImageEmbeddings {
-  private static instance: ImageEmbeddings;
+  private static instance: ImageEmbeddings | null = null;
+  private pipelinePromise: Promise<FeaturePipeline> | null = null;
 
   private constructor() {}
 
-  public static async getInstance() {
+  static async getInstance(): Promise<ImageEmbeddings> {
     if (!ImageEmbeddings.instance) {
       ImageEmbeddings.instance = new ImageEmbeddings();
     }
     return ImageEmbeddings.instance;
   }
 
-  public async embedImage(imagePath: string): Promise<number[]> {
-    // Konwersja obrazu do tensora (CLIP wymaga formatu 224x224)
+  private async getPipeline(): Promise<FeaturePipeline> {
+    if (!this.pipelinePromise) {
+      this.pipelinePromise = (async () => {
+        const { pipeline } = await import("@xenova/transformers");
+        return (await pipeline(
+          "feature-extraction",
+          "Xenova/clip-vit-base-patch32"
+        )) as FeaturePipeline;
+      })();
+    }
+    return this.pipelinePromise;
+  }
+
+  async embedImage(imagePath: string): Promise<number[]> {
+    const sharp = (await import("sharp")).default;
+    const extractor = await this.getPipeline();
+
+    // CLIP/ViT: JPEG buffer jest prostszy w Node niż raw RGB
     const imageBuffer = await sharp(imagePath)
-      .resize(224, 224)
-      .raw()
+      .resize(224, 224, { fit: "cover" })
+      .jpeg()
       .toBuffer();
 
-    // Wektoryzacja obrazu (CLIP)
-    const imageEmbeddings = await clipPipeline(imageBuffer, {
+    const output = await extractor(imageBuffer, {
       pooling: "mean",
       normalize: true,
     });
 
-    // Konwersja tensora na tablicę liczb
-    return Array.from(imageEmbeddings.data);
+    return Array.from(output.data);
   }
 
-  // Metoda wymagana przez FAISS (LangChain)
-  public async embedDocuments(documents: string[]): Promise<number[][]> {
-    const embeddings: number[][] = [];
+  /** Dla FAISS: jeśli string wygląda na ścieżkę obrazu — embed obrazu, inaczej zero-vector fallback. */
+  async embedDocuments(documents: string[]): Promise<number[][]> {
+    const out: number[][] = [];
     for (const doc of documents) {
-      const embedding = await this.embedImage(doc);
-      embeddings.push(embedding);
+      if (this.looksLikeImagePath(doc)) {
+        out.push(await this.embedImage(doc));
+      } else {
+        // Zapytania tekstowe / placeholdery: stub 512-d (CLIP base)
+        out.push(new Array(512).fill(0));
+      }
     }
-    return embeddings;
+    return out;
   }
 
-  // Metoda wymagana przez FAISS (LangChain)
-  public async embedQuery(query: string): Promise<number[]> {
-    // Dla uproszczenia używamy embedImage (query to ścieżka do obrazu)
-    return this.embedImage(query);
+  async embedQuery(query: string): Promise<number[]> {
+    if (this.looksLikeImagePath(query)) {
+      return this.embedImage(query);
+    }
+    const [vec] = await this.embedDocuments([query]);
+    return vec;
+  }
+
+  private looksLikeImagePath(value: string): boolean {
+    const ext = path.extname(value).toLowerCase();
+    return [".png", ".jpg", ".jpeg", ".webp"].includes(ext);
   }
 }

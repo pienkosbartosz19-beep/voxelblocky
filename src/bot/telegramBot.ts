@@ -1,91 +1,148 @@
-"use server";
-
 import { Telegraf } from "telegraf";
-import { writeFile } from "fs/promises";
+import { writeFile, mkdir, access } from "fs/promises";
 import path from "path";
 import { AIDolekGenerator } from "../../mini-services/ai-dolek";
 
-// Konfiguracja bota
-const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN!);
+const token = process.env.TELEGRAM_BOT_TOKEN;
+if (!token) {
+  console.error("Brak TELEGRAM_BOT_TOKEN — bot nie wystartuje.");
+  process.exit(1);
+}
+
+const bot = new Telegraf(token);
 const AVATAR_DIR = path.join(process.cwd(), "avatars");
 
-// Obsługa komendy /start
-bot.start((ctx) => {
-  ctx.reply(
-    "👋 Witaj w AIDolek!\n" +
-    "Dostępne komendy:\n" +
-    "/set_avatar - Ustaw awatar AI (wyślij zdjęcie)\n" +
-    "/generate - Wygeneruj treść z wybranym awatarem"
+// Oczekiwanie na zdjęcie po /set_avatar
+const awaitingAvatar = new Set<number>();
+
+async function ensureAvatarDir() {
+  await mkdir(AVATAR_DIR, { recursive: true });
+}
+
+function avatarPath(userId: number) {
+  return path.join(AVATAR_DIR, `avatar_${userId}.jpg`);
+}
+
+bot.start(async (ctx) => {
+  await ensureAvatarDir();
+  await ctx.reply(
+    [
+      "Witaj w AIDolek (Telegram).",
+      "",
+      "Komendy:",
+      "/set_avatar — wyślij potem zdjęcie awatara AI",
+      "/generate <prompt> — wygeneruj post LinkedIn",
+      "/avatar — status awatara",
+    ].join("\n")
   );
 });
 
-// Obsługa komendy /set_avatar
 bot.command("set_avatar", async (ctx) => {
-  ctx.reply("📸 Wyślij zdjęcie, które chcesz ustawić jako awatar AI.");
+  awaitingAvatar.add(ctx.from.id);
+  await ctx.reply("Wyślij teraz zdjęcie — zapiszę je jako awatar AI.");
 });
 
-// Obsługa wysyłanych zdjęć (po /set_avatar)
-bot.on("photo", async (ctx) => {
-  const photo = ctx.message.photo.pop(); // Największe zdjęcie
-  if (!photo) return;
-
+bot.command("avatar", async (ctx) => {
+  const filePath = avatarPath(ctx.from.id);
   try {
-    const file = await ctx.telegram.getFile(photo.file_id);
-    const fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${file.file_path}`;
-    const response = await fetch(fileUrl);
-    const buffer = await response.arrayBuffer();
-
-    // Zapis zdjęcia jako awatar
-    const fileName = `avatar_${ctx.from.id}.jpg`;
-    const filePath = path.join(AVATAR_DIR, fileName);
-    await writeFile(filePath, Buffer.from(buffer));
-
-    ctx.reply(`✅ Awatar zapisany jako: ${fileName}`);
-  } catch (err) {
-    console.error("Błąd podczas zapisywania awatara:", err);
-    ctx.reply("❌ Nie udało się zapisać awatara.");
+    await access(filePath);
+    await ctx.reply(`Awatar ustawiony: avatar_${ctx.from.id}.jpg`);
+  } catch {
+    await ctx.reply("Brak awatara. Użyj /set_avatar i wyślij zdjęcie.");
   }
 });
 
-// Obsługa komendy /generate
-bot.command("generate", async (ctx) => {
-  const args = ctx.message.text.split(" ").slice(1);
-  const prompt = args.join(" ");
+bot.on("photo", async (ctx) => {
+  const userId = ctx.from.id;
+  if (!awaitingAvatar.has(userId)) {
+    await ctx.reply("Aby zapisać awatar, najpierw użyj /set_avatar.");
+    return;
+  }
 
+  const photo = ctx.message.photo[ctx.message.photo.length - 1];
+  if (!photo) return;
+
+  try {
+    await ensureAvatarDir();
+    const file = await ctx.telegram.getFile(photo.file_id);
+    if (!file.file_path) throw new Error("Brak file_path z Telegram API");
+
+    const fileUrl = `https://api.telegram.org/file/bot${token}/${file.file_path}`;
+    const response = await fetch(fileUrl);
+    if (!response.ok) throw new Error(`Pobranie pliku: ${response.status}`);
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const filePath = avatarPath(userId);
+    await writeFile(filePath, buffer);
+
+    awaitingAvatar.delete(userId);
+    await ctx.reply(`Awatar zapisany: avatar_${userId}.jpg`);
+  } catch (err) {
+    console.error("Błąd zapisu awatara:", err);
+    await ctx.reply("Nie udało się zapisać awatara.");
+  }
+});
+
+bot.command("generate", async (ctx) => {
+  const prompt = ctx.message.text.split(" ").slice(1).join(" ").trim();
   if (!prompt) {
-    ctx.reply("❌ Podaj prompt, np. /generate Napisz post o AI");
+    await ctx.reply("Podaj prompt, np. /generate Napisz post o lokalnym AI");
     return;
   }
 
   try {
-    // Ścieżka do awatara (domyślnie: avatar_{user_id}.jpg)
+    await ensureAvatarDir();
     const fileName = `avatar_${ctx.from.id}.jpg`;
-    const filePath = path.join(AVATAR_DIR, fileName);
+    const filePath = avatarPath(ctx.from.id);
 
-    // Generowanie treści z awatarem
+    let avatarContext: string | undefined;
+    try {
+      await access(filePath);
+      avatarContext = `[Awatar AI ustawiony przez użytkownika: ${fileName}]`;
+    } catch {
+      avatarContext = undefined;
+      await ctx.reply(
+        "Uwaga: brak awatara (/set_avatar). Generuję treść bez awatara."
+      );
+    }
+
+    await ctx.reply("Generuję treść…");
     const content = await AIDolekGenerator.generateContent(
       prompt,
-      "linkedin", // Domyślnie LinkedIn
-      `[Awatar: ${fileName}]` // Informacja o awatarze w promptcie
+      "linkedin",
+      avatarContext,
+      "casual"
     );
 
-    ctx.reply(`🤖 Wygenerowana treść:\n\n${content}`);
+    await ctx.reply(`Wygenerowana treść:\n\n${content}`);
   } catch (err) {
-    console.error("Błąd podczas generowania treści:", err);
-    ctx.reply("❌ Nie udało się wygenerować treści.");
+    console.error("Błąd generowania:", err);
+    await ctx.reply("Nie udało się wygenerować treści (sprawdź Ollamę).");
   }
 });
 
-// Uruchomienie bota
-bot.launch().then(() => {
-  console.log("🚀 Telegram Bot uruchomiony");
-});
-
-// Obsługa błędów
 bot.catch((err, ctx) => {
-  console.error("Błąd w Telegram Bot:", err);
-  ctx.reply("❌ Wystąpił błąd. Spróbuj ponownie.");
+  console.error("Telegram Bot error:", err);
+  ctx.reply("Wystąpił błąd. Spróbuj ponownie.").catch(() => undefined);
 });
 
-// Eksport dla Next.js API
+// Start tylko gdy plik uruchamiany bezpośrednio (nie przy imporcie z Next)
+const isMain =
+  typeof require !== "undefined" &&
+  typeof module !== "undefined" &&
+  require.main === module;
+
+if (isMain || process.env.RUN_TELEGRAM_BOT === "1") {
+  ensureAvatarDir()
+    .then(() => bot.launch())
+    .then(() => console.log("Telegram Bot uruchomiony"))
+    .catch((err) => {
+      console.error("Nie udało się uruchomić bota:", err);
+      process.exit(1);
+    });
+
+  process.once("SIGINT", () => bot.stop("SIGINT"));
+  process.once("SIGTERM", () => bot.stop("SIGTERM"));
+}
+
 export default bot;

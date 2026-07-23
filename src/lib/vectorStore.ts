@@ -1,37 +1,42 @@
-"use server";
-
 import { FaissStore } from "@langchain/community/vectorstores/faiss";
 import { OllamaEmbeddings } from "@langchain/community/embeddings/ollama";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import { Document } from "langchain/document";
 import { createHash } from "crypto";
-import { redis } from "./cache"; // Import z cache.ts
-
-// Konfiguracja embeddings (tekst)
-const textEmbeddings = new OllamaEmbeddings({
-  model: "nomic-embed-text",
-  baseUrl: "http://localhost:11434",
-});
-
+import { mkdir } from "fs/promises";
+import path from "path";
+import { redis } from "./cache";
 import { ImageEmbeddings } from "./imageEmbeddings";
 
-// Placeholder dla embeddingów obrazów (CLIP)
-// Uwaga: FAISS wymaga tego samego wymiaru embeddingów dla wszystkich dokumentów w jednym indeksie.
-// Dlatego obrazy i tekst są przechowywane w osobnych indeksach.
+const textEmbeddings = new OllamaEmbeddings({
+  model: "nomic-embed-text",
+  baseUrl: process.env.OLLAMA_BASE_URL || "http://localhost:11434",
+});
+
+const TEXT_STORE_DIR = path.join(process.cwd(), "vector_store", "text");
+const IMAGE_STORE_DIR = path.join(process.cwd(), "vector_store", "image");
 
 export class VectorStore {
-  private static textFaissInstance: FaissStore;
-  private static imageFaissInstance: FaissStore;
-  private static imageEmbeddings: ImageEmbeddings;
+  private static textFaissInstance: FaissStore | null = null;
+  private static imageFaissInstance: FaissStore | null = null;
+  private static imageEmbeddings: ImageEmbeddings | null = null;
 
   private constructor() {}
 
-  // Inicjalizacja FAISS dla tekstu
-  private static async getTextFaissInstance() {
+  private static getCacheKey(
+    query: string,
+    type: "text" | "image" = "text"
+  ): string {
+    const hash = createHash("sha256").update(query).digest("hex");
+    return `embedding:${type}:${hash}`;
+  }
+
+  private static async getTextFaissInstance(): Promise<FaissStore> {
     if (!VectorStore.textFaissInstance) {
+      await mkdir(TEXT_STORE_DIR, { recursive: true });
       try {
         VectorStore.textFaissInstance = await FaissStore.load(
-          "./vector_store/text",
+          TEXT_STORE_DIR,
           textEmbeddings
         );
       } catch {
@@ -41,41 +46,36 @@ export class VectorStore {
     return VectorStore.textFaissInstance;
   }
 
-  // Inicjalizacja ImageEmbeddings (CLIP)
-  private static async getImageEmbeddings() {
+  private static async getImageEmbeddings(): Promise<ImageEmbeddings> {
     if (!VectorStore.imageEmbeddings) {
       VectorStore.imageEmbeddings = await ImageEmbeddings.getInstance();
     }
     return VectorStore.imageEmbeddings;
   }
 
-  // Inicjalizacja FAISS dla obrazów
-  private static async getImageFaissInstance() {
+  private static async getImageFaissInstance(): Promise<FaissStore> {
     if (!VectorStore.imageFaissInstance) {
+      await mkdir(IMAGE_STORE_DIR, { recursive: true });
       const imageEmbeddings = await VectorStore.getImageEmbeddings();
       try {
         VectorStore.imageFaissInstance = await FaissStore.load(
-          "./vector_store/image",
-          imageEmbeddings
+          IMAGE_STORE_DIR,
+          imageEmbeddings as unknown as OllamaEmbeddings
         );
       } catch {
-        VectorStore.imageFaissInstance = new FaissStore(imageEmbeddings, {});
+        VectorStore.imageFaissInstance = new FaissStore(
+          imageEmbeddings as unknown as OllamaEmbeddings,
+          {}
+        );
       }
     }
     return VectorStore.imageFaissInstance;
   }
 
-  // Generowanie klucza cache na podstawie zapytania
-  private static getCacheKey(query: string, type: "text" | "image" = "text"): string {
-    const hash = createHash("sha256").update(query).digest("hex");
-    return `embedding:${type}:${hash}`;
-  }
-
-  public static async addDocuments(documents: Document[]) {
+  public static async addDocuments(documents: Document[]): Promise<void> {
     const textDocs: Document[] = [];
     const imageDocs: Document[] = [];
 
-    // Rozdzielenie dokumentów na tekst i obrazy
     for (const doc of documents) {
       if (doc.metadata?.type === "image") {
         imageDocs.push(doc);
@@ -84,90 +84,127 @@ export class VectorStore {
       }
     }
 
-    // Przetwarzanie dokumentów tekstowych
     if (textDocs.length > 0) {
       const splitter = new RecursiveCharacterTextSplitter({
         chunkSize: 512,
         chunkOverlap: 50,
       });
       const textChunks = await splitter.splitDocuments(textDocs);
-      const textFaissInstance = await VectorStore.getTextFaissInstance();
-      await textFaissInstance.addDocuments(textChunks);
-      await textFaissInstance.save("./vector_store/text");
+      const store = await VectorStore.getTextFaissInstance();
+      await store.addDocuments(textChunks);
+      await store.save(TEXT_STORE_DIR);
+
+      // Placeholdery obrazów też w indeksie tekstowym (wyszukiwanie po nazwie/opisie)
+      // — obrazowe wektory CLIP są w osobnym indeksie poniżej.
     }
 
-    // Przetwarzanie dokumentów obrazowych
     if (imageDocs.length > 0) {
-      const imageFaissInstance = await VectorStore.getImageFaissInstance();
-      // Używamy embeddingów z metadanych (wygenerowanych przez CLIP)
-      const imageDocumentsWithEmbeddings = imageDocs.map((doc) => {
-        if (doc.metadata?.embedding) {
-          return {
-            pageContent: doc.pageContent,
+      // W indeksie obrazów pageContent = ścieżka pliku (ImageEmbeddings czyta plik)
+      const forImageIndex = imageDocs.map(
+        (doc) =>
+          new Document({
+            pageContent: String(doc.metadata?.path || doc.pageContent),
             metadata: doc.metadata,
-            embedding: doc.metadata.embedding, // Embedding z CLIP
-          };
-        }
-        return doc;
-      });
-      await imageFaissInstance.addDocuments(imageDocumentsWithEmbeddings);
-      await imageFaissInstance.save("./vector_store/image");
+          })
+      );
+      try {
+        const store = await VectorStore.getImageFaissInstance();
+        await store.addDocuments(forImageIndex);
+        await store.save(IMAGE_STORE_DIR);
+      } catch (err) {
+        console.warn(
+          "[VectorStore] Image FAISS unavailable, storing image captions in text index only:",
+          err
+        );
+      }
+
+      // Zawsze dodaj caption do indeksu tekstowego — działa bez CLIP
+      const captions = imageDocs.map(
+        (doc) =>
+          new Document({
+            pageContent: doc.pageContent,
+            metadata: { ...doc.metadata, type: "image" },
+          })
+      );
+      const textStore = await VectorStore.getTextFaissInstance();
+      await textStore.addDocuments(captions);
+      await textStore.save(TEXT_STORE_DIR);
     }
   }
 
-  public static async similaritySearch(query: string, k: number = 3, type: "text" | "image" = "text") {
+  public static async similaritySearch(
+    query: string,
+    k: number = 3,
+    type: "text" | "image" = "text"
+  ) {
     const cacheKey = VectorStore.getCacheKey(query, type);
 
-    // Próba wyszukiwania w cache Redis
     try {
-      const cachedResults = await redis.get(cacheKey);
-      if (cachedResults) {
-        return JSON.parse(cachedResults);
-      }
+      const cached = await redis.get(cacheKey);
+      if (cached) return JSON.parse(cached);
     } catch (err) {
-      console.warn("Redis cache error:", err);
+      console.warn("[VectorStore] Redis cache read error:", err);
     }
 
-    // Fallback do FAISS
-    const faissInstance = type === "text"
-      ? await VectorStore.getTextFaissInstance()
-      : await VectorStore.getImageFaissInstance();
-    const results = await faissInstance.similaritySearch(query, k);
+    let results;
+    if (type === "image") {
+      try {
+        const store = await VectorStore.getImageFaissInstance();
+        results = await store.similaritySearch(query, k);
+      } catch (err) {
+        console.warn(
+          "[VectorStore] Image search fallback to text captions:",
+          err
+        );
+        const store = await VectorStore.getTextFaissInstance();
+        results = await store.similaritySearch(query, k);
+      }
+    } else {
+      const store = await VectorStore.getTextFaissInstance();
+      results = await store.similaritySearch(query, k);
+    }
 
-    // Zapis wyników do cache (TTL: 1h)
     try {
       await redis.setex(cacheKey, 3600, JSON.stringify(results));
     } catch (err) {
-      console.warn("Failed to cache results in Redis:", err);
+      console.warn("[VectorStore] Redis cache write error:", err);
     }
 
     return results;
   }
 
-  public static async similaritySearchWithScore(query: string, k: number = 3, type: "text" | "image" = "text") {
+  public static async similaritySearchWithScore(
+    query: string,
+    k: number = 3,
+    type: "text" | "image" = "text"
+  ) {
     const cacheKey = `${VectorStore.getCacheKey(query, type)}:with_score`;
 
-    // Próba wyszukiwania w cache Redis
     try {
-      const cachedResults = await redis.get(cacheKey);
-      if (cachedResults) {
-        return JSON.parse(cachedResults);
-      }
+      const cached = await redis.get(cacheKey);
+      if (cached) return JSON.parse(cached);
     } catch (err) {
-      console.warn("Redis cache error:", err);
+      console.warn("[VectorStore] Redis cache read error:", err);
     }
 
-    // Fallback do FAISS
-    const faissInstance = type === "text"
-      ? await VectorStore.getTextFaissInstance()
-      : await VectorStore.getImageFaissInstance();
-    const results = await faissInstance.similaritySearchWithScore(query, k);
+    let results;
+    if (type === "image") {
+      try {
+        const store = await VectorStore.getImageFaissInstance();
+        results = await store.similaritySearchWithScore(query, k);
+      } catch {
+        const store = await VectorStore.getTextFaissInstance();
+        results = await store.similaritySearchWithScore(query, k);
+      }
+    } else {
+      const store = await VectorStore.getTextFaissInstance();
+      results = await store.similaritySearchWithScore(query, k);
+    }
 
-    // Zapis wyników do cache (TTL: 1h)
     try {
       await redis.setex(cacheKey, 3600, JSON.stringify(results));
     } catch (err) {
-      console.warn("Failed to cache results in Redis:", err);
+      console.warn("[VectorStore] Redis cache write error:", err);
     }
 
     return results;
