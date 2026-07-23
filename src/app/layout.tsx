@@ -22,7 +22,7 @@ export default function RootLayout({
   return (
     <html lang="pl" suppressHydrationWarning>
       <body
-        className={`${inter.variable} antialiased bg-background text-foreground`
+        className={`${inter.variable} antialiased bg-background text-foreground`}
       >
         {children}
         <Toaster />
