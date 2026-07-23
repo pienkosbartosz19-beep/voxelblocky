@@ -15,13 +15,13 @@ export async function POST(request: Request) {
     const files = formData.getAll("files") as File[];
 
     if (action === "search" && query) {
-      const results = await VectorStore.similaritySearch(query, 3);
+      const type = (formData.get("type") as string) || "text"; // Domyślnie tekst
+      const results = await VectorStore.similaritySearch(query, 3, type as "text" | "image");
       return NextResponse.json({ results });
     }
 
     if (action === "upload" && files.length > 0) {
-      const documents: string[] = [];
-      const metadata: Record<string, any>[] = [];
+      const documents: Document[] = [];
 
       for (const file of files) {
         const buffer = await file.arrayBuffer();
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
 
         await writeFile(tempFilePath, Buffer.from(buffer));
 
-        let loadedDocs;
+        let loadedDocs: Document[];
         if (fileName.endsWith(".pdf")) {
           loadedDocs = await DocumentLoader.loadPDF(tempFilePath);
         } else if (fileName.endsWith(".txt") || fileName.endsWith(".md")) {
@@ -41,17 +41,11 @@ export async function POST(request: Request) {
           continue;
         }
 
-        loadedDocs.forEach((doc) => {
-          documents.push(doc.pageContent);
-          metadata.push({
-            ...doc.metadata,
-            source: fileName,
-            type: file.type,
-          });
-        });
+        documents.push(...loadedDocs);
       }
 
-      await VectorStore.addDocuments(documents, metadata);
+      await VectorStore.addDocuments(documents);
+      return NextResponse.json({ success: true });t VectorStore.addDocuments(documents, metadata);
       return NextResponse.json({ success: true, documentsAdded: documents.length });
     }
 
